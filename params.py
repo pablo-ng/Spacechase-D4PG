@@ -7,24 +7,29 @@ class Params:
     DTYPE = 'float32'
     SEED = 123
     NUM_ACTORS = 4  # number of parallel distributed actors
-    UPDATE_ACTOR_FREQ = 10  # actor parameter update every n episodes
+    UPDATE_ACTOR_FREQ = 5  # actor parameter update every n episodes
 
     ## Environment params
     ENV_NAME = "GYM"  # GYM or SC
     ENV_OBS_SPACE = tf.TensorShape(3,)
     ENV_ACT_SPACE = tf.TensorShape(1,)
     ENV_ACT_BOUND = tf.constant([2.])
+    # Lower and upper bounds of critic value output distribution (varies with environment)
+    # V_min and V_max should be chosen based on the range of normalised reward values in the chosen env
+    ENV_V_MIN = tf.constant(-20.)
+    ENV_V_MAX = tf.constant(0.)
 
-    MAX_STEPS_TRAIN = tf.constant(10000)  # total number of steps to train for
-    MAX_EP_STEPS = tf.constant(1000)
-    WARM_UP_STEPS = tf.constant(1000)  # number of steps to perform a randomly chosen action before predicting by actor
+    MAX_STEPS_TRAIN = tf.constant(100000)  # total number of steps to train for
+    MAX_EP_STEPS = tf.constant(1000)  # max steps per episode
+    WARM_UP_STEPS = tf.constant(500)  # number of steps to perform a randomly chosen action for each actor before predicting by actor
 
     ## Replay Buffer
     BUFFER_TYPE = "Uniform"  # Uniform or Prioritized
-    BUFFER_SIZE = tf.constant(500000, dtype=tf.int32)  # must be power of 2 for PER
+    BUFFER_SIZE = tf.constant(1000000, dtype=tf.int32)  # must be power of 2 for PER
     BUFFER_PRIORITY_ALPHA = tf.constant(0.6)  # (0.0 = Uniform sampling, 1.0 = Greedy prioritisation)
     BUFFER_PRIORITY_BETA_START = tf.constant(0.4)  # (0 - no bias correction, 1 - full bias correction)
     BUFFER_PRIORITY_BETA_END = tf.constant(1.0)
+    BUFFER_PRIORITY_BETA_INCREMENT = (BUFFER_PRIORITY_BETA_END - BUFFER_PRIORITY_BETA_START) / tf.cast(MAX_STEPS_TRAIN, DTYPE)
     BUFFER_PRIORITY_EPSILON = tf.constant(0.00001)
     BUFFER_PARALLEL_ITERATIONS = 8  # need to be python int
 
@@ -35,7 +40,7 @@ class Params:
     GAMMA = tf.constant(0.99)  # Discount rate for future rewards
     TAU = tf.constant(0.001, dtype=DTYPE)  # Parameter for soft target network updates
     N_STEP_RETURNS = tf.constant(5)
-    BASE_NET_ARCHITECTURE = [800]  # shallow net seems to work best
+    BASE_NET_ARCHITECTURE = [500, 400]  # shallow net seems to work best
     NUM_ATOMS = 51  # Number of atoms in output layer of distributional critic
     WITH_BATCH_NORM = tf.constant(True)
     WITH_DROPOUT = tf.constant(False)

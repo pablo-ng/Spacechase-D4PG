@@ -1,5 +1,5 @@
-# Spacechase-DDPG
-HS Bremen Spacechase DDPG Agent implementation
+# Spacechase-D4PG
+HS Bremen Spacechase D4PG Agent implementation
 
 ## Dependencies
 
