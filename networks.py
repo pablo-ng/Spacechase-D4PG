@@ -18,10 +18,9 @@ def update_weights(target_weights, source_weights, tau):
 
 
 def base_net(x):
-    # todo BN as first
-    dropout = (lambda inp: tf.keras.layers.Dropout(rate=0.16)(inp)) if Params.WITH_DROPOUT else lambda inp: inp
-    batch_norm = (lambda inp: tf.keras.layers.BatchNormalization()(inp)) if Params.WITH_BATCH_NORM else lambda inp: inp
     regularizer = tf.keras.regularizers.l2(0.02) if Params.WITH_REGULARIZER else None
+    batch_norm = (lambda inp: tf.keras.layers.BatchNormalization()(inp)) if Params.WITH_BATCH_NORM else lambda inp: inp
+    dropout = (lambda inp: tf.keras.layers.Dropout(rate=0.16)(inp)) if Params.WITH_DROPOUT else lambda inp: inp
 
     x = batch_norm(x)
     for n_units in Params.BASE_NET_ARCHITECTURE:
@@ -42,8 +41,7 @@ class ActorNetwork(tf.Module):
         with tf.device(self.device), self.name_scope:
             # Set up actor net
             self.actor_network = self.build_model()
-            self.actor_network.compile(
-                optimizer=tf.keras.optimizers.Adam(learning_rate=Params.ACTOR_LEARNING_RATE), loss='mse')
+            self.actor_network.compile(optimizer=tf.keras.optimizers.Adam(Params.ACTOR_LEARNING_RATE), loss='mse')
             self.tvariables = self.actor_network.trainable_variables
             self.nvariables = self.actor_network.non_trainable_variables
 
@@ -90,8 +88,8 @@ class CriticNetwork(tf.Module):
             self.critic_network = self.build_model()
             self.critic_network.compile(
                 optimizer=tf.keras.optimizers.Adam(learning_rate=Params.CRITIC_LEARNING_RATE),
-                # loss=tf.keras.losses.CategoricalCrossentropy(reduction="none", from_logits=False)  # from logits as y_pred encodes a probability distribution
-                loss=tf.nn.softmax_cross_entropy_with_logits
+                loss=tf.keras.losses.CategoricalCrossentropy(reduction="none", from_logits=False)
+                # not from logits as y_pred encodes a probability distribution
             )
             self.tvariables = self.critic_network.trainable_variables
             self.nvariables = self.critic_network.non_trainable_variables
@@ -120,13 +118,12 @@ class CriticNetwork(tf.Module):
             action = tf.keras.Input(shape=Params.ENV_ACT_SPACE, name="action")
             x = tf.keras.layers.Concatenate()([inputs, action])
             x, _ = base_net(x)
-            # todo concat actions after base layer?
             output_logits = tf.keras.layers.Dense(Params.NUM_ATOMS, activation="linear",
                                                   kernel_initializer=tf.random_uniform_initializer(-0.003, 0.003),
-                                                  bias_initializer=tf.random_uniform_initializer(-0.003, 0.003), name="test")(x)
+                                                  bias_initializer=tf.random_uniform_initializer(-0.003, 0.003))(x)
             output_probs = tf.keras.layers.Softmax()(output_logits)
 
-            model = tf.keras.Model(inputs=[inputs, action], outputs=[output_probs, output_logits])
+            model = tf.keras.Model(inputs=[inputs, action], outputs=output_probs)
             return model
 
     def train(self, x, target_z_atoms, target_q_probs, is_weights):
@@ -135,11 +132,11 @@ class CriticNetwork(tf.Module):
 
             with tf.GradientTape() as tape:
                 target_z_projected = l2_project(target_z_atoms, target_q_probs, self.target_z_atoms)
-                y_ = self.critic_network(x, training=True)[1]
-                # loss_value = self.critic_network.loss(y_true=tf.stop_gradient(target_z_projected), y_pred=y_)
-                loss_value = self.critic_network.loss(labels=tf.stop_gradient(target_z_projected), logits=y_)
+                y_ = self.critic_network(x, training=True)
+                # loss_value = self.critic_network.loss(labels=tf.stop_gradient(target_z_projected), logits=y_)
+                loss_value = self.critic_network.loss(y_true=tf.stop_gradient(target_z_projected), y_pred=y_)
                 weighted_loss = tf.multiply(loss_value, is_weights)
-                mean_loss = tf.reduce_mean(weighted_loss)  # todo could add reduction to loss (to network loss (keras))
+                mean_loss = tf.reduce_mean(weighted_loss)
                 l2_reg_loss = 0.  # could add L2 weight regularisation
                 total_loss = mean_loss + l2_reg_loss
 

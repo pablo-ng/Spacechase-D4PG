@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from params import Params
-from utils import tf_round, Logger
+from utils import tf_round, Logger, GaussianNoise, TFOrnsteinUhlenbeckActionNoise, EpisodeCounter
 from networks import ActorNetwork, update_weights
 from game_tf import GameTF
 from gym_wrapper_tf import GymTF
@@ -9,7 +9,7 @@ from gym_wrapper_tf import GymTF
 
 class Actor(ActorNetwork):
 
-    def __init__(self, actor_id, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise):
+    def __init__(self, actor_id, actor_event_stop, learner_policy_variables, replay_buffer):
         super(Actor, self).__init__(with_target_net=False, name="Actor")
 
         with tf.device(self.device), self.name_scope:
@@ -17,15 +17,21 @@ class Actor(ActorNetwork):
             self.actor_id = actor_id
             self.actor_event_stop = actor_event_stop
             self.replay_buffer = replay_buffer
-            self.actor_noise = actor_noise
             self.update_op = tf.no_op
             self.n_step_returns = Params.N_STEP_RETURNS
             self.gamma = Params.GAMMA
             self.learner_policy_variables = learner_policy_variables
             self.indices = tf.range(self.n_step_returns)
 
+            ## Init Actor-Noise
+            if Params.NOISE_TYPE == "Gaussian":
+                self.actor_noise = GaussianNoise
+            elif Params.NOISE_TYPE == "OrnsteinUhlenbeck":
+                self.actor_noise = TFOrnsteinUhlenbeckActionNoise
+            else:
+                raise Exception(f"Noise with name {Params.NOISE_TYPE} not found.")
+
             ## Init Env
-            # todo make env wrapper class which takes env name from Params
             if Params.ENV_NAME == "SC":
                 self.env = GameTF()
             elif Params.ENV_NAME == "GYM":
@@ -40,12 +46,12 @@ class Actor(ActorNetwork):
         with tf.device(self.device), self.name_scope:
 
             tf.while_loop(
-                lambda _: tf.logical_not(tf.reshape(tf.py_function(self.actor_event_stop.is_set, inp=[], Tout=[tf.bool]), ())),
+                lambda: tf.logical_not(tf.reshape(tf.py_function(self.actor_event_stop.is_set, inp=[], Tout=[tf.bool]), ())),
                 self.do_episode,
-                loop_vars=[tf.constant(1)]
+                loop_vars=[]
             )
 
-    def do_episode(self, n_episode):
+    def do_episode(self):
         print("retracing do_episode")
 
         with tf.device(self.device), self.name_scope:
@@ -74,6 +80,8 @@ class Actor(ActorNetwork):
                 ]
             )
 
+            EpisodeCounter.increment()
+
             ## Decrease actor noise sigma after episode
             tf.cond(tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS), lambda: None, self.actor_noise.decrease_sigma)
 
@@ -88,16 +96,16 @@ class Actor(ActorNetwork):
             #                                                                     Tout=tf.string), lambda: "")
 
             ## Log episode
-            Logger.log_ep_actor(n_episode, ep_steps, ep_avg_reward, self.actor_noise.sigma, self.env.info, ep_replay_filename)
+            Logger.log_ep_actor(EpisodeCounter.__call__(), ep_steps, ep_avg_reward, self.actor_noise.sigma, self.env.info, ep_replay_filename)
 
             ## Update actor network with learner params
             tf.cond(
-                tf.equal(tf.math.mod(n_episode, Params.UPDATE_ACTOR_FREQ), 0),
+                tf.equal(tf.math.mod(EpisodeCounter.__call__(), Params.UPDATE_ACTOR_FREQ), 0),
                 lambda: update_weights(self.tvariables + self.nvariables, self.learner_policy_variables, tf.constant(1.)),
                 tf.no_op
             )
 
-            return tf.add(n_episode, 1)
+            return []
 
     # noinspection PyUnusedLocal
     def do_step(self, n_step, terminal, state, ep_reward_sum, frames, states_buffer, actions_buffer, rewards_buffer):
@@ -110,7 +118,7 @@ class Actor(ActorNetwork):
                 tf.cond(
                     tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS),
                     lambda: tf.random.uniform((Params.ENV_ACT_SPACE.dims[0],), minval=-Params.ENV_ACT_BOUND, maxval=Params.ENV_ACT_BOUND),
-                    lambda: tf.add(self.predict_action(tf.reshape(state, (1, -1))), self.actor_noise())
+                    lambda: tf.add(self.predict_action(tf.reshape(state, (1, -1))), self.actor_noise.__call__())
                 ), (self.env.act_space.dims[0],)
             )
 
@@ -121,66 +129,50 @@ class Actor(ActorNetwork):
             # frames = tf.cond(tf.logical_and(record_episode, tf.equal(tf.math.floormod(n_step, Params.RECORD_STEP_FREQ), 0)),
             #                  lambda: frames.write(frames.size(), env.get_frame()), lambda: frames)
 
-            buffer_idx = tf.math.mod(n_step, self.n_step_returns)
-            states_buffer = states_buffer.write(buffer_idx, state)
-            actions_buffer = actions_buffer.write(buffer_idx, action)
-            rewards_buffer = rewards_buffer.write(buffer_idx, reward)
+            buffer_write_idx = tf.math.mod(n_step, self.n_step_returns)
+            states_buffer = states_buffer.write(buffer_write_idx, state)
+            actions_buffer = actions_buffer.write(buffer_write_idx, action)
+            rewards_buffer = rewards_buffer.write(buffer_write_idx, reward)
+            rewards_buffer_stack = rewards_buffer.stack()
 
             ## Increase step counter
             n_step = tf.add(n_step, 1)
-            buffer_idx = tf.math.mod(n_step, self.n_step_returns)
-
             continue_episode = tf.math.logical_and(
                 n_step < Params.MAX_EP_STEPS,
                 tf.math.logical_not(terminal)
             )
 
-            def compute_traces():
+            def compute_traces(i):
+
+                buffer_idx = tf.math.mod(n_step + i, self.n_step_returns)
+
                 state0 = states_buffer.gather(buffer_idx)
                 action0 = actions_buffer.gather(buffer_idx)
 
                 gammas = tf.vectorized_map(
                     lambda idx: tf.math.pow(self.gamma, tf.cast(tf.math.mod((buffer_idx + idx), self.n_step_returns), Params.DTYPE)),
-                    self.indices
+                    self.indices[i:]
                 )
 
-                discounted_reward = tf.reduce_sum(tf.multiply(rewards_buffer.stack(), gammas))
+                discounted_reward = tf.reduce_sum(tf.multiply(rewards_buffer_stack[i:], gammas))
 
                 gamma = gammas[-1]
 
                 ## Add to replay memory as shape (1, space)
                 self.replay_buffer.append((state0, action0, discounted_reward, terminal, state2, gamma))
 
-            @tf.function()
-            def compute_last_traces(n_step_returns):
+                return tf.add(i, 1)
 
-                # todo do better
-
-                rewards_buffer_stack = rewards_buffer.stack()
-
-                for i in tf.range(1, n_step_returns):
-
-                    buffer_idx = tf.math.mod(n_step + i, n_step_returns)
-
-                    state0 = states_buffer.gather(buffer_idx)
-                    action0 = actions_buffer.gather(buffer_idx)
-
-                    gammas = tf.vectorized_map(
-                        lambda idx: tf.math.pow(self.gamma,
-                                                tf.cast(tf.math.mod((buffer_idx + idx), n_step_returns),
-                                                        Params.DTYPE)),
-                        self.indices[i:]
-                    )
-
-                    discounted_reward = tf.reduce_sum(tf.multiply(rewards_buffer_stack[i:], gammas))
-
-                    gamma = gammas[-1]
-
-                    ## Add to replay memory as shape (1, space)
-                    self.replay_buffer.append((state0, action0, discounted_reward, terminal, state2, gamma))
-
-            tf.cond(tf.greater_equal(n_step, Params.N_STEP_RETURNS), compute_traces, lambda: None)
-            tf.cond(tf.logical_not(continue_episode), lambda: compute_last_traces(Params.N_STEP_RETURNS), tf.no_op)
+            loop_len = tf.cond(
+                tf.greater_equal(n_step, Params.N_STEP_RETURNS),
+                lambda: tf.cond(continue_episode, lambda: tf.constant(1), lambda: self.n_step_returns),
+                lambda: tf.constant(0)
+            )
+            tf.while_loop(
+                lambda i: tf.less(i, loop_len),
+                compute_traces,
+                loop_vars=[tf.constant(0)]
+            )
 
             return n_step, continue_episode, state2, tf.add(ep_reward_sum, reward), frames, states_buffer, actions_buffer, rewards_buffer
 

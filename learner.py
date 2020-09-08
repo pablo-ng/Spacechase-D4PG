@@ -24,6 +24,9 @@ class Learner(tf.Module):
             self.actor = ActorNetwork(with_target_net=True)
             self.critic = CriticNetwork()
 
+            # Save shared variables
+            self.policy_variables = self.actor.tvariables + self.actor.nvariables
+
     @tf.function()
     def run(self):
         print("retracing learner run")
@@ -61,7 +64,7 @@ class Learner(tf.Module):
 
             ## Predict target Q value by target critic network
             target_action_batch = self.actor.target_actor_network(s2_batch, training=False)
-            target_q_probs = tf.cast(self.critic.target_critic_network([s2_batch, target_action_batch], training=False)[0], self.dtype)
+            target_q_probs = tf.cast(self.critic.target_critic_network([s2_batch, target_action_batch], training=False), self.dtype)
 
             ## Compute targets (bellman update)
             target_z_atoms_batch = tf.where(t_batch, 0., self.critic.target_z_atoms)
@@ -74,12 +77,11 @@ class Learner(tf.Module):
             actions = self.actor.actor_network(s_batch, training=False)
 
             # Compute and negate action values (to enable gradient ascent)
-            values = self.critic.critic_network([s_batch, actions], training=False)[0]
+            values = self.critic.critic_network([s_batch, actions], training=False)
 
             ## Compute (dq / da * da / dtheta = dq / dtheta) grads (action values grads wrt. actor network weights)
             action_grads = tf.gradients(values, actions, self.critic.z_atoms)[0]
             actor_gradients = tf.gradients(actions, self.actor.tvariables, -action_grads)
-            # actor_gradients = tf.gradients(-values, self.actor.tvariables) # todo old approach
 
             # Normalize grads element-wise
             actor_gradients = [tf.divide(gradient, tf.cast(self.batch_size, self.dtype)) for gradient in actor_gradients]

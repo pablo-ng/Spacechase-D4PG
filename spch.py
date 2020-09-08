@@ -28,12 +28,12 @@ def train():
     ## Init Replay Buffer
     priority_beta = tf.Variable(Params.BUFFER_PRIORITY_BETA_START)
     buffer_data_spec = (
-        tf.TensorSpec(Params.ENV_OBS_SPACE, dtype=Params.DTYPE),    # state
-        tf.TensorSpec(Params.ENV_ACT_SPACE, dtype=Params.DTYPE),    # action
-        tf.TensorSpec((1,), dtype=Params.DTYPE),                    # reard
-        tf.TensorSpec((1,), dtype=tf.bool),                         # terminal
-        tf.TensorSpec(Params.ENV_OBS_SPACE, dtype=Params.DTYPE),    # state2
-        tf.TensorSpec((1,), dtype=Params.DTYPE),                    # gamma**N
+        tf.TensorSpec(Params.ENV_OBS_SPACE, dtype=Params.DTYPE, name="state"),
+        tf.TensorSpec(Params.ENV_ACT_SPACE, dtype=Params.DTYPE, name="action"),
+        tf.TensorSpec((1,), dtype=Params.DTYPE, name="reward"),
+        tf.TensorSpec((1,), dtype=tf.bool, name="terminal"),
+        tf.TensorSpec(Params.ENV_OBS_SPACE, dtype=Params.DTYPE, name="state2"),
+        tf.TensorSpec((1,), dtype=Params.DTYPE, name="gamma**N"),
     )
     if Params.BUFFER_TYPE == "Uniform":
         replay_buffer = UniformReplayBuffer(buffer_data_spec)
@@ -41,14 +41,6 @@ def train():
         replay_buffer = PrioritizedReplayBufferProportional(buffer_data_spec)
     else:
         raise Exception(f"Buffer with name {Params.BUFFER_TYPE} not found.")
-
-    ## Init Actor-Noise
-    if Params.NOISE_TYPE == "Gaussian":
-        actor_noise = GaussianNoise()
-    elif Params.NOISE_TYPE == "OrnsteinUhlenbeck":
-        actor_noise = TFOrnsteinUhlenbeckActionNoise()
-    else:
-        raise Exception(f"Noise with name {Params.NOISE_TYPE} not found.")
 
     ## Init threads list
     threads = []
@@ -58,38 +50,16 @@ def train():
 
     ## Init learner
     learner = Learner(actor_event_stop, replay_buffer, priority_beta)
-    threads.append(threading.Thread(target=learner.run))
-    learner_policy_variables = learner.actor.tvariables + learner.actor.nvariables
+    thread = threading.Thread(target=learner.run)
+    thread.start()
+    threads.append(thread)
 
     ## Init actors
-    # for n_actor in range(Params.NUM_ACTORS):
-    actor1 = Actor(1, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise)
-    threads.append(threading.Thread(target=actor1.run))
-
-    # actor2 = Actor(2, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise)
-    # threads.append(threading.Thread(target=actor2.run))
-    #
-    # actor3 = Actor(3, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise)
-    # threads.append(threading.Thread(target=actor3.run))
-    #
-    # actor4 = Actor(4, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise)
-    # threads.append(threading.Thread(target=actor4.run))
-
-    # actor5 = Actor(5, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise, writer)
-    # threads.append(threading.Thread(target=actor5.run))
-    #
-    # actor6 = Actor(6, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise, writer)
-    # threads.append(threading.Thread(target=actor6.run))
-    #
-    # actor7 = Actor(7, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise, writer)
-    # threads.append(threading.Thread(target=actor7.run))
-    #
-    # actor8 = Actor(8, actor_event_stop, learner_policy_variables, replay_buffer, actor_noise, writer)
-    # threads.append(threading.Thread(target=actor8.run))
-
-    ## Start all threads
-    for t in threads:
-        t.start()
+    for n_actor in range(Params.NUM_ACTORS):
+        actor = Actor(n_actor, actor_event_stop, learner.policy_variables, replay_buffer)
+        thread = threading.Thread(target=actor.run)
+        thread.start()
+        threads.append(thread)
 
     ## Wait for finish
     for t in threads:

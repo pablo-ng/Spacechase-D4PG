@@ -17,8 +17,8 @@ class Params:
     # Lower and upper bounds of critic value output distribution (varies with environment)
     # V_min and V_max should be chosen based on the range of normalised reward values in the chosen env
     # A good rule of thumb is to set vmax to the discounted sum of the maximum instantaneous rewards for the maximum episode length; then set vmin to -vmax.
-    ENV_V_MIN = tf.constant(-20.)
-    ENV_V_MAX = tf.constant(0.)
+    ENV_V_MIN = tf.constant(-400.)
+    ENV_V_MAX = tf.constant(+0.)
 
     MAX_STEPS_TRAIN = tf.constant(100000)  # total number of steps to train for
     MAX_EP_STEPS = tf.constant(1000)  # max steps per episode
@@ -65,6 +65,6 @@ class Params:
     RECORD_START_EP = tf.constant(300)  # start recording at episode n
     RECORD_STEP_FREQ = tf.constant(3)  # do record step every n steps (to skip steps in between)
 
-    LOG_TENSORBOARD = tf.constant(True)  # start with $ tensorboard --logdir logs --reload_interval 2
+    LOG_TENSORBOARD = tf.constant(True)  # start with $ tensorboard --logdir logs --reload_interval 5
     PLOT_MODELS = tf.constant(False)  # plot model summary
 

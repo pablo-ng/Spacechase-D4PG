@@ -34,15 +34,15 @@ class Logger(tf.Module):
     def log_ep_actor(cls, n_episode, ep_steps, ep_avg_reward, noise_sigma, env_info, ep_replay_filename):
         print("retracing log_ep_tensorboard")
 
-        tf.print('E:', n_episode, '\tSteps:', ep_steps, '\t\tAvg. Reward:', tf_round(ep_avg_reward, 3),
-                 '\tNoise variance:', tf_round(noise_sigma, 2), '\t', env_info)
+        # tf.print('E:', n_episode, '\tSteps:', ep_steps, '\t\tAvg. Reward:', tf_round(ep_avg_reward, 3),
+        #          '\tNoise variance:', tf_round(noise_sigma, 2), '\t', env_info)
 
         if Params.LOG_TENSORBOARD:
             with tf.device(cls.device), cls.name_scope:
 
                 with cls.writer.as_default():
                     step = tf.cast(n_episode, tf.int64)
-                    # tf.summary.scalar("Steps", ep_steps, step)
+                    tf.summary.scalar("Steps", ep_steps, step)
                     tf.summary.scalar("Average Reward", ep_avg_reward, step)
                     tf.cond(tf.not_equal(ep_replay_filename, ""),
                             lambda: tf.summary.text("Episode Replay", ep_replay_filename, step), lambda: False)
@@ -54,7 +54,7 @@ class Logger(tf.Module):
     def log_step_learner(cls, n_step, td_error):
         print("retracing log_ep_tensorboard")
 
-        tf.print("Train step:", n_step, "\t\tTD-Error:", td_error)
+        # tf.print("Train step:", n_step, "\t\tTD-Error:", td_error)
 
         if Params.LOG_TENSORBOARD:
             with tf.device(cls.device), cls.name_scope:
@@ -66,70 +66,97 @@ class Logger(tf.Module):
             return None
 
 
-class TFOrnsteinUhlenbeckActionNoise(tf.Module):
-    # todo use classmethods
+class EpisodeCounter(tf.Module):
 
+    device = Params.DEVICE
+    name_scope = tf.name_scope("EpisodeCounter")
+
+    with tf.device(device), name_scope:
+        counter = tf.Variable(0, dtype=tf.int32, name="n_episode")
+        counter_cs = tf.CriticalSection(name="n_episode")
+
+    @classmethod
+    def increment(cls, increment=1):
+        with tf.device(cls.device), cls.name_scope:
+            print("retracing Counter increment")
+            # Increments counter in a thread safe manner.
+
+            def assign_add():
+                return cls.counter.assign_add(increment).value()
+
+            return cls.counter_cs.execute(assign_add)
+
+    @classmethod
+    def __call__(cls):
+        with tf.device(cls.device), cls.name_scope:
+            print("retracing Counter call")
+            # Get the counter value in a thread safe manner.
+
+            def get_value():
+                return cls.counter.value()
+
+            return cls.counter_cs.execute(get_value)
+
+
+class TFOrnsteinUhlenbeckActionNoise(tf.Module):
     # Taken from https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py
 
-    def __init__(self):
-        super(TFOrnsteinUhlenbeckActionNoise, self).__init__(name="TFOrnsteinUhlenbeckActionNoise")
-        self.device = Params.DEVICE
+    device = Params.DEVICE
+    name_scope = tf.name_scope("TFOrnsteinUhlenbeckActionNoise")
 
-        with tf.device(self.device), self.name_scope:
-            # std values: sigma=0.3, theta=.15, dt=1e-2, decay=6e-5, x0=None
-            self.dtype = Params.DTYPE
-            self.theta = Params.NOISE_THETA
-            self.mu = tf.fill(Params.ENV_ACT_SPACE, value=Params.NOISE_MU)
-            self.sigma = tf.Variable(Params.NOISE_SIGMA)
-            self.sigma_min = 5e-3
-            self.dt = Params.DT
-            self.x0 = Params.NOISE_X0
-            self.x_prev = tf.Variable(tf.zeros_like(self.mu))
-            self.decay = Params.NOISE_DECAY
-            self.reset()
+    with tf.device(device), name_scope:
+        # std values: sigma=0.3, theta=.15, dt=1e-2, decay=6e-5, x0=None
+        dtype = Params.DTYPE
+        theta = Params.NOISE_THETA
+        mu = tf.fill(Params.ENV_ACT_SPACE, value=Params.NOISE_MU)
+        sigma = tf.Variable(Params.NOISE_SIGMA)
+        sigma_min = 5e-3
+        dt = Params.DT
+        x0 = Params.NOISE_X0
+        x_prev = tf.Variable((tf.zeros_like(mu) if x0 == 0. else x0))
+        decay = Params.NOISE_DECAY
 
-    def __call__(self):
+    @classmethod
+    def __call__(cls):
         print("retracing noise call")
-        with tf.device(self.device), self.name_scope:
-            tf.cond(tf.math.less(self.sigma, self.sigma_min), tf.no_op, lambda: self.sigma.assign(tf.math.multiply(self.sigma, self.decay), read_value=False))
+        with tf.device(cls.device), cls.name_scope:
+            tf.cond(tf.math.less(cls.sigma, cls.sigma_min), tf.no_op, lambda: cls.sigma.assign(tf.math.multiply(cls.sigma, cls.decay), read_value=False))
             x = tf.math.add(
-                tf.math.add(self.x_prev, tf.math.multiply(tf.math.multiply(self.theta, tf.math.subtract(self.mu, self.x_prev)), self.dt)),
-                tf.math.multiply(tf.math.multiply(self.sigma, tf.sqrt(self.dt)), tf.random.normal(self.mu.shape))
+                tf.math.add(cls.x_prev, tf.math.multiply(tf.math.multiply(cls.theta, tf.math.subtract(cls.mu, cls.x_prev)), cls.dt)),
+                tf.math.multiply(tf.math.multiply(cls.sigma, tf.sqrt(cls.dt)), tf.random.normal(cls.mu.shape))
             )
-            self.x_prev.assign(x)
-            return tf.cast(x, self.dtype)
+            cls.x_prev.assign(x)
+            return tf.cast(x, cls.dtype)
 
-    def reset(self):
-        print("retracing noise reset")
-        with tf.device(self.device), self.name_scope:
-            self.x_prev.assign(tf.cond(tf.math.not_equal(self.x0, 0.), lambda: self.x0, lambda: tf.zeros_like(self.mu)))
-
-    def decrease_sigma(self):
+    @classmethod
+    def decrease_sigma(cls):
         pass
 
 
 class GaussianNoise(tf.Module):
 
-    def __init__(self):
-        super(GaussianNoise, self).__init__(name="GaussianNoise")
-        self.device = Params.DEVICE
-        with tf.device(self.device), self.name_scope:
-            self.mu = tf.fill(Params.ENV_ACT_SPACE, value=Params.NOISE_MU)
-            self.shape = Params.ENV_ACT_SPACE
-            self.sigma = tf.Variable(Params.NOISE_SIGMA)
-            self.sigma_min = Params.NOISE_SIGMA_MIN
-            self.decay = Params.NOISE_DECAY
-            self.bound = Params.ENV_ACT_BOUND
+    device = Params.DEVICE
+    name_scope = tf.name_scope("GaussianNoise")
 
-    def __call__(self):
-        with tf.device(self.device), self.name_scope:
-            noise = tf.random.normal(self.shape) * self.sigma * self.bound + self.mu
+    with tf.device(device), name_scope:
+        mu = tf.fill(Params.ENV_ACT_SPACE, value=Params.NOISE_MU)
+        shape = Params.ENV_ACT_SPACE
+        sigma = tf.Variable(Params.NOISE_SIGMA)
+        sigma_min = Params.NOISE_SIGMA_MIN
+        decay = Params.NOISE_DECAY
+        bound = Params.ENV_ACT_BOUND
+
+    @classmethod
+    def __call__(cls):
+        with tf.device(cls.device), cls.name_scope:
+            noise = tf.random.normal(cls.shape) * cls.sigma * cls.bound + cls.mu
             return noise
 
-    def decrease_sigma(self):
-        with tf.device(self.device), self.name_scope:
-            tf.cond(tf.math.less(self.sigma, self.sigma_min),
-                    tf.no_op, lambda: self.sigma.assign(tf.math.multiply(self.sigma, self.decay), read_value=False))
+    @classmethod
+    def decrease_sigma(cls):
+        with tf.device(cls.device), cls.name_scope:
+            tf.cond(tf.math.less(cls.sigma, cls.sigma_min),
+                    tf.no_op, lambda: cls.sigma.assign(tf.math.multiply(cls.sigma, cls.decay), read_value=False))
 
 
 class VideoRecorder:
