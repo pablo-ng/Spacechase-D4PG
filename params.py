@@ -16,6 +16,7 @@ class Params:
     ENV_ACT_BOUND = tf.constant([2.])
     # Lower and upper bounds of critic value output distribution (varies with environment)
     # V_min and V_max should be chosen based on the range of normalised reward values in the chosen env
+    # A good rule of thumb is to set vmax to the discounted sum of the maximum instantaneous rewards for the maximum episode length; then set vmin to -vmax.
     ENV_V_MIN = tf.constant(-20.)
     ENV_V_MAX = tf.constant(0.)
 

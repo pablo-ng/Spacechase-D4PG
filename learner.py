@@ -71,7 +71,7 @@ class Learner(tf.Module):
             td_error = self.critic.train(x=[s_batch, a_batch], target_z_atoms=target_z_atoms_batch, target_q_probs=target_q_probs, is_weights=weights_batch)
 
             # Compute actions for state batch
-            actions = self.actor.actor_network(s_batch, training=True)
+            actions = self.actor.actor_network(s_batch, training=False)
 
             # Compute and negate action values (to enable gradient ascent)
             values = self.critic.critic_network([s_batch, actions], training=False)[0]

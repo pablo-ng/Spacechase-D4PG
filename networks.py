@@ -133,9 +133,8 @@ class CriticNetwork(tf.Module):
         print("retracing critic train")
         with tf.device(self.device), self.name_scope:
 
-            target_z_projected = l2_project(target_z_atoms, target_q_probs, self.target_z_atoms)
-
             with tf.GradientTape() as tape:
+                target_z_projected = l2_project(target_z_atoms, target_q_probs, self.target_z_atoms)
                 y_ = self.critic_network(x, training=True)[1]
                 # loss_value = self.critic_network.loss(y_true=tf.stop_gradient(target_z_projected), y_pred=y_)
                 loss_value = self.critic_network.loss(labels=tf.stop_gradient(target_z_projected), logits=y_)
