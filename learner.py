@@ -3,11 +3,12 @@ import tensorflow as tf
 from params import Params
 from utils import Logger
 from networks import ActorNetwork, CriticNetwork, update_weights
+from experience_replay import ReplayBuffer
 
 
 class Learner(tf.Module):
 
-    def __init__(self, actor_event_stop, replay_buffer, priority_beta):
+    def __init__(self, actor_event_stop):
         super(Learner, self).__init__(name="Learner")
         self.device = Params.DEVICE
 
@@ -16,8 +17,9 @@ class Learner(tf.Module):
             self.batch_size = Params.MINIBATCH_SIZE
             self.gamma = Params.GAMMA
             self.tau = Params.TAU
-            self.replay_buffer = replay_buffer
-            self.priority_beta = priority_beta
+            self.replay_buffer = ReplayBuffer.get_replay_buffer()
+            self.replay_client = self.replay_buffer.get_client()
+            self.priority_beta = tf.Variable(Params.BUFFER_PRIORITY_BETA_START)
             self.actor_event_stop = actor_event_stop
 
             ## Init Networks
@@ -48,7 +50,12 @@ class Learner(tf.Module):
             )
 
             ## Stop actors
-            tf.cond(tf.greater_equal(n_steps, Params.MAX_STEPS_TRAIN), lambda: tf.py_function(self.actor_event_stop.set, inp=[], Tout=[]), tf.no_op)
+            tf.cond(tf.greater_equal(n_steps, Params.MAX_STEPS_TRAIN),
+                    lambda: tf.py_function(self.actor_event_stop.set, inp=[], Tout=[]), tf.no_op)
+
+            # Stop reverb server
+            tf.cond(tf.greater_equal(n_steps, Params.MAX_STEPS_TRAIN),
+                    lambda: tf.py_function(self.replay_buffer.reverb_server.stop, inp=[], Tout=[]), tf.no_op)
 
     def train_step(self, n_step):
         print("retracing train_step")
@@ -71,7 +78,7 @@ class Learner(tf.Module):
             target_z_atoms_batch = r_batch + (target_z_atoms_batch * g_batch)
 
             ## Train the critic on given targets
-            td_error = self.critic.train(x=[s_batch, a_batch], target_z_atoms=target_z_atoms_batch, target_q_probs=target_q_probs, is_weights=weights_batch)
+            td_error_batch = self.critic.train(x=[s_batch, a_batch], target_z_atoms=target_z_atoms_batch, target_q_probs=target_q_probs, is_weights=weights_batch)
 
             # Compute actions for state batch
             actions = self.actor.actor_network(s_batch, training=False)
@@ -96,7 +103,11 @@ class Learner(tf.Module):
                            self.critic.tvariables + self.critic.nvariables, self.tau)
 
             # Use critic TD error to update priorities
-            self.replay_buffer.update_priorities(idxes_batch, td_error)
+            # self.replay_buffer.update_priorities(idxes_batch, td_error_batch)
+            priorities = tf.pow((tf.abs(td_error_batch) + Params.BUFFER_PRIORITY_EPSILON), Params.BUFFER_PRIORITY_ALPHA)
+            self.replay_client.update_priorities(tf.constant([Params.BUFFER_TYPE]), keys=idxes_batch,
+                                         priorities=tf.cast(priorities,
+                                                            tf.float64))  # todo can set reverb to use 32? / dtype
 
             # Increment beta value
             self.priority_beta.assign_add(Params.BUFFER_PRIORITY_BETA_INCREMENT)
@@ -104,7 +115,7 @@ class Learner(tf.Module):
             # Log status
             tf.cond(
                 tf.equal(tf.math.mod(n_step, tf.constant(200)), tf.constant(0)),
-                lambda: Logger.log_step_learner(n_step, tf.cast(tf.reduce_mean(td_error), Params.DTYPE)),
+                lambda: Logger.log_step_learner(n_step, tf.cast(tf.reduce_mean(td_error_batch), Params.DTYPE)),
                 lambda: None
             )
 

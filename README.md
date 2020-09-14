@@ -9,3 +9,5 @@ Python 3.7.7
 - matplotlib 3.2.1
 - opencv-python 4.2.0.32
 - imageio-2.9.0
+- dm-reverb 0.1.0
+

@@ -5,23 +5,28 @@ from utils import tf_round, Logger, GaussianNoise, TFOrnsteinUhlenbeckActionNois
 from networks import ActorNetwork, update_weights
 from game_tf import GameTF
 from gym_wrapper_tf import GymTF
+from experience_replay import ReplayBuffer
 
 
 class Actor(ActorNetwork):
 
-    def __init__(self, actor_id, actor_event_stop, learner_policy_variables, replay_buffer):
+    def __init__(self, actor_id, actor_event_stop, learner_policy_variables):
         super(Actor, self).__init__(with_target_net=False, name="Actor")
 
         with tf.device(self.device), self.name_scope:
 
             self.actor_id = actor_id
             self.actor_event_stop = actor_event_stop
-            self.replay_buffer = replay_buffer
             self.update_op = tf.no_op
             self.n_step_returns = Params.N_STEP_RETURNS
             self.gamma = Params.GAMMA
             self.learner_policy_variables = learner_policy_variables
             self.indices = tf.range(self.n_step_returns)
+
+            if Params.BUFFER_TYPE in ("ReverbUniform", "ReverbPrioritized"):
+                self.replay_buffer = ReplayBuffer.get_replay_buffer().get_client()
+            else:
+                self.replay_buffer = ReplayBuffer.get_replay_buffer()
 
             ## Init Actor-Noise
             if Params.NOISE_TYPE == "Gaussian":
@@ -159,7 +164,24 @@ class Actor(ActorNetwork):
                 gamma = gammas[-1]
 
                 ## Add to replay memory as shape (1, space)
-                self.replay_buffer.append((state0, action0, discounted_reward, terminal, state2, gamma))
+                if Params.BUFFER_TYPE in ("ReverbUniform", "ReverbPrioritized"):
+                    self.replay_buffer.insert(
+                        (
+                            tf.reshape(state0, (-1,)),
+                            tf.reshape(action0, (-1,)),
+                            tf.reshape(discounted_reward, (-1,)),
+                            tf.reshape(terminal, (-1,)),
+                            tf.reshape(state2, (-1,)),
+                            tf.reshape(gamma, (-1,)),
+                        ),
+                        tables=tf.constant([Params.BUFFER_TYPE]),
+                        priorities=tf.constant([1.], dtype=tf.float64)
+                    )
+                    # with self.replay_buffer.writer(max_sequence_length=1) as writer:
+                    #     writer.append((state0, action0, discounted_reward, terminal, state2, gamma))
+                    #     writer.create_item(table=Params.BUFFER_TYPE, num_timesteps=1, priority=1.)
+                else:
+                    self.replay_buffer.append((state0, action0, discounted_reward, terminal, state2, gamma))
 
                 return tf.add(i, 1)
 

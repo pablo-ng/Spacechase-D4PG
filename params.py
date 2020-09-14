@@ -25,7 +25,7 @@ class Params:
     WARM_UP_STEPS = tf.constant(500)  # number of steps to perform a randomly chosen action for each actor before predicting by actor
 
     ## Replay Buffer
-    BUFFER_TYPE = "Uniform"  # Uniform or Prioritized
+    BUFFER_TYPE = "ReverbPrioritized"  # Uniform, ReverbUniform, ReverbPrioritized or Prioritized
     BUFFER_SIZE = tf.constant(1000000, dtype=tf.int32)  # must be power of 2 for PER
     BUFFER_PRIORITY_ALPHA = tf.constant(0.6)  # (0.0 = Uniform sampling, 1.0 = Greedy prioritisation)
     BUFFER_PRIORITY_BETA_START = tf.constant(0.4)  # (0 - no bias correction, 1 - full bias correction)
@@ -33,6 +33,16 @@ class Params:
     BUFFER_PRIORITY_BETA_INCREMENT = (BUFFER_PRIORITY_BETA_END - BUFFER_PRIORITY_BETA_START) / tf.cast(MAX_STEPS_TRAIN, DTYPE)
     BUFFER_PRIORITY_EPSILON = tf.constant(0.00001)
     BUFFER_PARALLEL_ITERATIONS = 8  # need to be python int
+
+    ## Replay Buffe data spec
+    BUFFER_DATA_SPEC = (
+        tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state"),
+        tf.TensorSpec(ENV_ACT_SPACE, dtype=DTYPE, name="action"),
+        tf.TensorSpec((1,), dtype=DTYPE, name="reward"),
+        tf.TensorSpec((1,), dtype=tf.bool, name="terminal"),
+        tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state2"),
+        tf.TensorSpec((1,), dtype=DTYPE, name="gamma**N"),
+    )
 
     ## Networks
     MINIBATCH_SIZE = tf.constant(256, dtype=tf.int32)

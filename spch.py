@@ -5,7 +5,6 @@ import threading
 from params import Params
 from actor import Actor
 from learner import Learner
-from experience_replay_tf import PrioritizedReplayBufferProportional, PrioritizedReplayBufferRankBased, UniformReplayBuffer
 
 """
 TODO
@@ -18,7 +17,7 @@ TODO
 - DeepMind MuJoCo Multi-Agent Soccer Environment
     https://github.com/deepmind/dm_control/blob/master/dm_control/locomotion/soccer/README.md
 - see acme code: https://github.com/deepmind/acme
-
+- see matlab params: https://de.mathworks.com/products/reinforcement-learning.html
 """
 
 
@@ -41,23 +40,6 @@ def train():
     # recorder = VideoRecorder()
     # record_episode = tf.Variable(Params.RECORD_VIDEO)
 
-    ## Init Replay Buffer
-    priority_beta = tf.Variable(Params.BUFFER_PRIORITY_BETA_START)
-    buffer_data_spec = (
-        tf.TensorSpec(Params.ENV_OBS_SPACE, dtype=Params.DTYPE, name="state"),
-        tf.TensorSpec(Params.ENV_ACT_SPACE, dtype=Params.DTYPE, name="action"),
-        tf.TensorSpec((1,), dtype=Params.DTYPE, name="reward"),
-        tf.TensorSpec((1,), dtype=tf.bool, name="terminal"),
-        tf.TensorSpec(Params.ENV_OBS_SPACE, dtype=Params.DTYPE, name="state2"),
-        tf.TensorSpec((1,), dtype=Params.DTYPE, name="gamma**N"),
-    )
-    if Params.BUFFER_TYPE == "Uniform":
-        replay_buffer = UniformReplayBuffer(buffer_data_spec)
-    elif Params.BUFFER_TYPE == "Prioritized":
-        replay_buffer = PrioritizedReplayBufferProportional(buffer_data_spec)
-    else:
-        raise Exception(f"Buffer with name {Params.BUFFER_TYPE} not found.")
-
     ## Init threads list
     threads = []
 
@@ -65,14 +47,14 @@ def train():
     actor_event_stop = threading.Event()
 
     ## Init learner
-    learner = Learner(actor_event_stop, replay_buffer, priority_beta)
+    learner = Learner(actor_event_stop)
     thread = threading.Thread(target=learner.run)
     thread.start()
     threads.append(thread)
 
     ## Init actors
     for n_actor in range(Params.NUM_ACTORS):
-        actor = Actor(n_actor, actor_event_stop, learner.policy_variables, replay_buffer)
+        actor = Actor(n_actor, actor_event_stop, learner.policy_variables)
         thread = threading.Thread(target=actor.run)
         thread.start()
         threads.append(thread)
