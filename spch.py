@@ -1,16 +1,32 @@
 import tensorflow as tf
 from os import environ
 import threading
-import datetime
 
 from params import Params
-from utils import TFOrnsteinUhlenbeckActionNoise, GaussianNoise
 from actor import Actor
 from learner import Learner
 from experience_replay_tf import PrioritizedReplayBufferProportional, PrioritizedReplayBufferRankBased, UniformReplayBuffer
 
+"""
+TODO
+- name all operations, use profiler: 
+    https://www.tensorflow.org/guide/profiler#profiling_apis
+    https://www.tensorflow.org/tensorboard/tensorboard_profiling_keras
+- Learning from demonstrations
+    - Deep Q-Learning from Demonstrations (DQfD)	
+    - Recurrent Replay Distributed DQN from Demonstratinos (R2D3)	
+- DeepMind MuJoCo Multi-Agent Soccer Environment
+    https://github.com/deepmind/dm_control/blob/master/dm_control/locomotion/soccer/README.md
+- see acme code: https://github.com/deepmind/acme
+
+"""
+
 
 def train():
+
+    # Start a gRPC server at port 6009
+    if Params.TENSORFLOW_PROFILER:
+        tf.profiler.experimental.server.start(6009)
 
     ## Set TF dtype and filter devices
     tf.keras.backend.set_floatx(Params.DTYPE)

@@ -65,6 +65,7 @@ class Params:
     RECORD_START_EP = tf.constant(300)  # start recording at episode n
     RECORD_STEP_FREQ = tf.constant(3)  # do record step every n steps (to skip steps in between)
 
-    LOG_TENSORBOARD = tf.constant(True)  # start with $ tensorboard --logdir logs --reload_interval 5
+    LOG_TENSORBOARD = tf.constant(True)  # start with: $ tensorboard --logdir logs --reload_interval 5
+    TENSORFLOW_PROFILER = tf.constant(False)
     PLOT_MODELS = tf.constant(False)  # plot model summary
 
