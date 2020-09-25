@@ -4,7 +4,7 @@ import tensorflow as tf
 class SumTree:
 
     def __init__(self, capacity, parallel_iterations, p_max):
-        # todo capacity is power of 2
+        # capacity must be power of 2
         self.parallel_iterations = parallel_iterations
         self.capacity = capacity
         self.n_nodes = tf.subtract(tf.multiply(2, capacity), 1)

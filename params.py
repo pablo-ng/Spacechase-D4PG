@@ -11,8 +11,8 @@ class Params:
 
     ## Environment params
     ENV_NAME = "GYM"  # GYM or SC
-    ENV_OBS_SPACE = tf.TensorShape(3,)
-    ENV_ACT_SPACE = tf.TensorShape(1,)
+    ENV_OBS_SPACE = tf.TensorShape((3,))
+    ENV_ACT_SPACE = tf.TensorShape((1,))
     ENV_ACT_BOUND = tf.constant([2.])
     # Lower and upper bounds of critic value output distribution (varies with environment)
     # V_min and V_max should be chosen based on the range of normalised reward values in the chosen env
@@ -25,24 +25,13 @@ class Params:
     WARM_UP_STEPS = tf.constant(500)  # number of steps to perform a randomly chosen action for each actor before predicting by actor
 
     ## Replay Buffer
-    BUFFER_TYPE = "ReverbPrioritized"  # Uniform, ReverbUniform, ReverbPrioritized or Prioritized
+    BUFFER_TYPE = "ReverbUniform"  # Uniform, ReverbUniform, ReverbPrioritized or Prioritized
     BUFFER_SIZE = tf.constant(1000000, dtype=tf.int32)  # must be power of 2 for PER
     BUFFER_PRIORITY_ALPHA = tf.constant(0.6)  # (0.0 = Uniform sampling, 1.0 = Greedy prioritisation)
     BUFFER_PRIORITY_BETA_START = tf.constant(0.4)  # (0 - no bias correction, 1 - full bias correction)
     BUFFER_PRIORITY_BETA_END = tf.constant(1.0)
-    BUFFER_PRIORITY_BETA_INCREMENT = (BUFFER_PRIORITY_BETA_END - BUFFER_PRIORITY_BETA_START) / tf.cast(MAX_STEPS_TRAIN, DTYPE)
     BUFFER_PRIORITY_EPSILON = tf.constant(0.00001)
     BUFFER_PARALLEL_ITERATIONS = 8  # need to be python int
-
-    ## Replay Buffe data spec
-    BUFFER_DATA_SPEC = (
-        tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state"),
-        tf.TensorSpec(ENV_ACT_SPACE, dtype=DTYPE, name="action"),
-        tf.TensorSpec((1,), dtype=DTYPE, name="reward"),
-        tf.TensorSpec((1,), dtype=tf.bool, name="terminal"),
-        tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state2"),
-        tf.TensorSpec((1,), dtype=DTYPE, name="gamma**N"),
-    )
 
     ## Networks
     MINIBATCH_SIZE = tf.constant(256, dtype=tf.int32)
@@ -68,7 +57,7 @@ class Params:
     NOISE_X0 = tf.constant(0.)
 
     ## Video Recorder
-    RECORD_VIDEO = tf.constant(True)
+    RECORD_VIDEO = tf.constant(False)
     RECORD_VIDEO_TYPE = "GIF"  # GIF or MP4
     FRAME_SIZE = tf.constant([64., 64.])
     RECORD_FREQ = tf.constant(50)  # record episodes and save to video file every n epsidoes
@@ -76,6 +65,35 @@ class Params:
     RECORD_STEP_FREQ = tf.constant(3)  # do record step every n steps (to skip steps in between)
 
     LOG_TENSORBOARD = tf.constant(True)  # start with: $ tensorboard --logdir logs --reload_interval 5
+    LOG_CONSOLE = tf.constant(False)  # print logs to console
     TENSORFLOW_PROFILER = tf.constant(False)
     PLOT_MODELS = tf.constant(False)  # plot model summary
+
+    # Calculate some params
+    BUFFER_PRIORITY_BETA_INCREMENT = (BUFFER_PRIORITY_BETA_END - BUFFER_PRIORITY_BETA_START) / tf.cast(MAX_STEPS_TRAIN, DTYPE)
+    BUFFER_FROM_REVERB = True if BUFFER_TYPE in ("ReverbUniform", "ReverbPrioritized") else False
+    if BUFFER_FROM_REVERB:
+        BUFFER_DATA_SPEC = (
+            tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state"),
+            tf.TensorSpec(ENV_ACT_SPACE, dtype=DTYPE, name="action"),
+            tf.TensorSpec((N_STEP_RETURNS,), dtype=DTYPE, name="rewards_stack"),
+            tf.TensorSpec((), dtype=tf.bool, name="terminal"),
+            tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state2"),
+            tf.TensorSpec((NUM_ATOMS,), dtype=DTYPE, name="target_z_atoms"),
+        )
+    else:
+        BUFFER_DATA_SPEC = (
+            tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state"),
+            tf.TensorSpec(ENV_ACT_SPACE, dtype=DTYPE, name="action"),
+            tf.TensorSpec((1,), dtype=DTYPE, name="reward"),
+            tf.TensorSpec((1,), dtype=tf.bool, name="terminal"),
+            tf.TensorSpec(ENV_OBS_SPACE, dtype=DTYPE, name="state2"),
+            tf.TensorSpec((1,), dtype=DTYPE, name="gamma**N"),
+        )
+    GAMMAS = tf.vectorized_map(
+        lambda n, gamma=GAMMA: tf.math.pow(gamma, n),
+        tf.range(N_STEP_RETURNS, dtype=DTYPE)
+    )
+    GAMMAS2 = tf.repeat(GAMMAS, 2)
+
 
