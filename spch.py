@@ -7,15 +7,16 @@ from learner import Learner
 from actor import Actor
 
 from experience_replay import UniformReplayBuffer
-from experience_replay_reverb import ReverbUniformReplayBuffer
+from experience_replay_reverb import ReverbUniformReplayBuffer, ReverbPrioritizedReplayBuffer
 from noise import TFOrnsteinUhlenbeckActionNoise, GaussianNoise
 from video_recorder import VideoRecorder
 from logger import Logger
 
 """
 TODO
+- logger: see write_graph and write_images
 - analytical solution, train agent only for control / for approaching x/y coords
-- name all operations, use profiler: 
+- name all operations, then can use profiler: 
     https://www.tensorflow.org/guide/profiler#profiling_apis
     https://www.tensorflow.org/tensorboard/tensorboard_profiling_keras
 - Learning from demonstrations
@@ -24,7 +25,6 @@ TODO
 - DeepMind MuJoCo Multi-Agent Soccer Environment
     https://github.com/deepmind/dm_control/blob/master/dm_control/locomotion/soccer/README.md
 - see acme code: https://github.com/deepmind/acme
-- see matlab params: https://de.mathworks.com/products/reinforcement-learning.html
 """
 
 
@@ -58,6 +58,8 @@ def train():
         replay_buffer = UniformReplayBuffer()
     elif Params.BUFFER_TYPE == "ReverbUniform":
         replay_buffer = ReverbUniformReplayBuffer()
+    elif Params.BUFFER_TYPE == "ReverbPrioritized":
+        replay_buffer = ReverbPrioritizedReplayBuffer()
     else:
         raise Exception(f"Buffer with name {Params.BUFFER_TYPE} not found.")
 

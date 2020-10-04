@@ -103,10 +103,6 @@ class CriticNetwork(tf.Module):
             # Compile target; Optimizer and loss are arbitrary (needed for feed forward)
             self.target_critic_network.compile(optimizer='sgd', loss='mse')
 
-            # Init Z-Atoms once
-            self.z_atoms = tf.linspace(Params.ENV_V_MIN, Params.ENV_V_MAX, Params.NUM_ATOMS)
-            self.target_z_atoms = tf.linspace(Params.ENV_V_MIN, Params.ENV_V_MAX, Params.NUM_ATOMS)
-
             if Params.PLOT_MODELS:
                 plot_model(self.critic_network)
 
@@ -131,7 +127,7 @@ class CriticNetwork(tf.Module):
         with tf.device(self.device), self.name_scope:
 
             with tf.GradientTape() as tape:
-                target_z_projected = l2_project(target_z_atoms, target_q_probs, self.target_z_atoms)
+                target_z_projected = l2_project(target_z_atoms, target_q_probs, Params.Z_ATOMS)
                 y_ = self.critic_network(x, training=True)
                 # loss_value = self.critic_network.loss(labels=tf.stop_gradient(target_z_projected), logits=y_)
                 loss_value = self.critic_network.loss(y_true=tf.stop_gradient(target_z_projected), y_pred=y_)

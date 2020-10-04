@@ -71,7 +71,7 @@ class Learner(tf.Module):
                     self.replay_buffer.sample_batch(self.batch_size, self.priority_beta)
 
                 ## Compute targets (bellman update)
-                target_z_atoms_batch = tf.where(t_batch, 0., self.critic.target_z_atoms)
+                target_z_atoms_batch = tf.where(t_batch, 0., Params.Z_ATOMS)
                 target_z_atoms_batch = r_batch + (target_z_atoms_batch * g_batch)
 
             ## Predict target Q value by target critic network
@@ -88,7 +88,7 @@ class Learner(tf.Module):
             values = self.critic.critic_network([s_batch, actions], training=False)
 
             ## Compute (dq / da * da / dtheta = dq / dtheta) grads (action values grads wrt. actor network weights)
-            action_grads = tf.gradients(values, actions, self.critic.z_atoms)[0]
+            action_grads = tf.gradients(values, actions, Params.Z_ATOMS)[0]
             actor_gradients = tf.gradients(actions, self.actor.tvariables, -action_grads)
 
             # Normalize grads element-wise
@@ -105,20 +105,14 @@ class Learner(tf.Module):
 
             # Use critic TD error to update priorities
             self.replay_buffer.update_priorities(idxes_batch, td_error_batch)
-            # if Params.BUFFER_TYPE in ("ReverbPrioritized",):
-            #     priorities = tf.pow((tf.abs(td_error_batch) + Params.BUFFER_PRIORITY_EPSILON),
-            #                         Params.BUFFER_PRIORITY_ALPHA)
-            #     self.replay_client.update_priorities(tf.constant([Params.BUFFER_TYPE]), keys=idxes_batch,
-            #                                          priorities=tf.cast(priorities, tf.float64))
-            #     # todo can set reverb to use 32? / dtype
 
             # Increment beta value
             self.priority_beta.assign_add(Params.BUFFER_PRIORITY_BETA_INCREMENT)
 
             # Log status
             tf.cond(
-                tf.equal(tf.math.mod(n_step, tf.constant(200)), tf.constant(0)),
-                lambda: self.logger.log_step_learner(n_step, tf.cast(tf.reduce_mean(td_error_batch), Params.DTYPE)),
+                tf.equal(tf.math.mod(n_step, tf.constant(Params.LEARNER_LOG_STEPS)), tf.constant(0)),
+                lambda: self.logger.log_step_learner(n_step, tf.cast(tf.reduce_mean(td_error_batch), Params.DTYPE), self.priority_beta),
                 lambda: None
             )
 

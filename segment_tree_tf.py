@@ -120,7 +120,6 @@ class SumTree:
 class PriorityQueue:
 
     def __init__(self, capacity, parallel_iterations, p_max):
-        # todo capacity is power of 2
         self.parallel_iterations = parallel_iterations
         self.capacity = capacity
         # self.p_min = tf.Variable(p_max)

@@ -232,7 +232,7 @@ class GameTF(tf.Module):
 #         self.rot.ges.assign([0.2, 0.2])
 #
 #         # tf.random.uniform((2,), minval=0.25, maxval=0.75)  tf.fill((2,), 0.5)
-#         # todo change to: np.array([1.5 * self.spaceball_radius, 1.5 * self.spaceball_radius]) # tf.random.uniform(()), tf.random.uniform(())
+#         change to: np.array([1.5 * self.spaceball_radius, 1.5 * self.spaceball_radius]) # tf.random.uniform(()), tf.random.uniform(())
 #         self.rot.pos.assign([0.5, 0.5])
 #
 #         return self.get_obs()

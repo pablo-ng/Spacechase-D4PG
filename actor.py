@@ -51,6 +51,9 @@ class Actor(ActorNetwork):
 
         with tf.device(self.device), self.name_scope:
 
+            # Get episode number
+            n_episode = self.logger.increment_episode()
+
             # Set record state
             # record_episode.assign(tf.cond(
             #     tf.logical_and(
@@ -75,8 +78,6 @@ class Actor(ActorNetwork):
                 ]
             )
 
-            self.logger.increment_episode()
-
             ## Decrease actor noise sigma after episode
             tf.cond(tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS), lambda: None, self.actor_noise.decrease_sigma)
 
@@ -91,11 +92,16 @@ class Actor(ActorNetwork):
             #                                                                     Tout=tf.string), lambda: "")
 
             ## Log episode
-            self.logger.log_ep_actor(ep_steps, ep_avg_reward, self.actor_noise.sigma, self.env.info, ep_replay_filename)
+            tf.cond(
+                tf.equal(tf.math.mod(n_episode, tf.constant(Params.ACTOR_LOG_STEPS)), tf.constant(0)),
+                lambda: self.logger.log_ep_actor(n_episode, ep_steps, ep_avg_reward, self.actor_noise.sigma,
+                                                 self.env.info, ep_replay_filename),
+                lambda: None, name="Logger"
+            )
 
             ## Update actor network with learner params
             tf.cond(
-                tf.equal(tf.math.mod(self.logger.n_episode(), Params.UPDATE_ACTOR_FREQ), 0),
+                tf.equal(tf.math.mod(n_episode, Params.UPDATE_ACTOR_FREQ), 0),
                 lambda: update_weights(self.tvariables + self.nvariables, self.learner_policy_variables, tf.constant(1.)),
                 tf.no_op
             )
@@ -156,11 +162,23 @@ class Actor(ActorNetwork):
 
                 ## Add to replay memory
                 if Params.BUFFER_FROM_REVERB:
-                    self.replay_buffer.insert(
-                        [_state0, action0, rewards_buffer_stack, terminal, state2, tf.zeros(Params.NUM_ATOMS)],
-                        tables=tf.constant([Params.BUFFER_TYPE]),
-                        priorities=tf.constant([1.], dtype=tf.float64)
-                    )
+                    _rewards_buffer_stack = tf.concat((tf.repeat(-Params.ENV_REWARD_INF, i), rewards_buffer_stack[i:]), axis=0)
+                    # _rewards_buffer_stack = rewards_buffer_stack
+                    if Params.BUFFER_IS_PRIORITIZED:
+                        max_priority = self.replay_buffer.sample(Params.BUFFER_TYPE + "_max",
+                                                                 Params.BUFFER_DATA_SPEC_DTYPES).info.priority
+                        self.replay_buffer.insert(
+                            [_state0, action0, _rewards_buffer_stack, terminal, state2, tf.zeros(Params.NUM_ATOMS)],
+                            tables=Params.BUFFER_PRIORITY_TABLE_NAMES,
+                            priorities=tf.repeat(max_priority, Params.BUFFER_PRIORITY_TABLE_NAMES.shape[0])
+                        )
+                    else:
+                        self.replay_buffer.insert(
+                            [_state0, action0, _rewards_buffer_stack, terminal, state2, tf.zeros(Params.NUM_ATOMS)],
+                            tables=tf.constant([Params.BUFFER_TYPE]),
+                            priorities=tf.constant([1.], dtype=tf.float64)
+                        )
+
                 else:
                     gammas = Params.GAMMAS2[(i + buffer_idx):(buffer_idx + Params.N_STEP_RETURNS)]
                     discounted_reward = tf.reduce_sum(tf.multiply(rewards_buffer_stack[i:], gammas))
