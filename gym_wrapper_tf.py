@@ -58,6 +58,9 @@ class GymTF(tf.Module):
         state2, reward, terminal, _ = self.env.step(action)
         return state2, reward, terminal
 
+    def warmup_action(self):
+        return tf.random.uniform((self.act_space.dims[0],), minval=-self.act_bound, maxval=self.act_bound)
+
     def get_frame(self):
         with tf.device(self.device), self.name_scope:
             return tf.cast(tf.zeros(tf.cast(self.frame_size, tf.int32)), tf.uint8)

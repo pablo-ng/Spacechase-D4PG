@@ -1,6 +1,6 @@
 from cv2 import VideoWriter, VideoWriter_fourcc
 from os import mkdir
-from os.path import abspath
+from os.path import abspath, isdir
 import numpy as np
 import datetime
 import imageio
@@ -10,7 +10,7 @@ from params import Params
 
 class VideoRecorder:
 
-    def __init__(self):
+    def __init__(self, log_dir):
 
         if not Params.RECORD_VIDEO:
             return
@@ -23,7 +23,10 @@ class VideoRecorder:
             raise Exception("Frame size must be > 64px")
 
         self.video_writer = None
-        self.writer_path = 'recorded/' + datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        self.writer_path = 'recorded/' + log_dir
+
+        if not isdir("recorded"):
+            mkdir("recorded")
 
         try:
             mkdir(self.writer_path)

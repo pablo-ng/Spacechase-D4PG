@@ -22,16 +22,17 @@ class GameTF(tf.Module):
             self.rad = tf.constant(0.01)
             self.bes_inc = tf.constant(0.2)
 
-            self.n_goals = tf.constant(4)
+            self.n_goals = Params.ENV_N_GOALS
             self.goal_pos = tf.Variable(tf.zeros((self.n_goals, 2)))
+            self.goals_leftover = tf.Variable(self.n_goals)
 
             self.n_steps_total = tf.Variable(0)
             self.terminal = tf.Variable(True)
             self.info = tf.Variable("")
 
-            self.obs_space = tf.TensorShape(4 + 2*self.n_goals,)
-            self.act_space = tf.TensorShape(2,)
-            self.act_bound = tf.constant([1.])
+            self.obs_space = Params.ENV_OBS_SPACE
+            self.act_space = Params.ENV_ACT_SPACE
+            self.act_bound = Params.ENV_ACT_BOUND
 
             self.not_schnitt_kreis_bande = \
                 lambda kreis: tf.cond(
@@ -55,11 +56,13 @@ class GameTF(tf.Module):
             self.terminal.assign(False)
             self.info.assign("")
             self.ges.assign([0., 0.])
-            self.pos.assign([0.9, 0.1])
+            self.pos.assign([0.5, 0.5])
 
             x = tf.transpose(tf.random.uniform((1, tf.math.floordiv(self.n_goals, 2)), minval=0.2, maxval=0.4))
             y = tf.transpose(tf.random.uniform((1, tf.math.floordiv(self.n_goals, 2)), minval=0.1, maxval=0.8))
             self.goal_pos.assign(tf.concat([tf.concat([y, x], axis=1), tf.concat([y, 1-x], axis=1)], axis=0))
+
+            self.goals_leftover.assign(self.n_goals)
 
             return self.get_obs()
 
@@ -69,28 +72,22 @@ class GameTF(tf.Module):
 
         with tf.device(self.device), self.name_scope:
 
-            ## Zeit
+            # Zeit
             self.n_steps_total.assign_add(1)
 
-            ## Movement
+            # Movement
             self.bes.assign(self.bes_inc * action)
             self.ges.assign_add(self.bes * self.dt)
             self.pos.assign_add(self.ges * self.dt)
 
-            ## Banden
+            # Banden
             kreis_rot = tf.stack([self.pos[0], self.pos[1], self.rad])
             rot_trifft_bande = tf.cond(self.schnitt_kreis_bande(kreis_rot), lambda: True, lambda: False)
 
-            ## Auswertung
-            self.terminal.assign(tf.cond(
-                rot_trifft_bande,
-                lambda: True, lambda: False
-            ))
-
-            ## Calc reward and remove goals
+            # Calc reward and remove goals
             distances = tf.map_fn(tf.norm, tf.subtract(self.pos, self.goal_pos))
             reached_goal = tf.cond(
-                tf.less_equal(tf.reduce_min(distances), .1),
+                tf.less_equal(tf.reduce_min(distances), .07),
                 lambda: True, lambda: False
             )
             reward = tf.cond(
@@ -103,13 +100,34 @@ class GameTF(tf.Module):
                 lambda: self.goal_pos
             )
 
+            # Count leftover goals
+            self.goals_leftover = tf.cond(
+                reached_goal,
+                lambda: self.goals_leftover.assign_sub(1),
+                lambda: self.goals_leftover,
+            )
+
+            # Auswertung
+            self.terminal.assign(tf.cond(
+                rot_trifft_bande,
+                lambda: True,
+                lambda: tf.cond(
+                    tf.equal(self.goals_leftover, 0),
+                    lambda: True,
+                    lambda: False,
+                )
+            ))
+
             return self.get_obs(), reward, self.terminal
+
+    def warmup_action(self):
+        return tf.random.uniform((self.act_space.dims[0],), minval=-self.act_bound, maxval=self.act_bound)
+        # return tf.constant([-0.1, +0.1])
 
     def get_obs(self):
         print("retracing get_obs")
         with tf.device(self.device), self.name_scope:
             obs = tf.concat([self.pos, self.ges, tf.reshape(self.goal_pos, (-1,))], axis=0)
-            obs = tf.expand_dims(obs, axis=0)
             return obs
 
     def get_frame(self):
@@ -243,14 +261,14 @@ class GameTF(tf.Module):
 #         tf.cond(tf.reduce_sum(tf.abs(action)) > 5, lambda: tf.print("Action:", action), lambda: tf.no_op())
 #         print("retracing step")
 #
-#         ## Zeit
+#         # Zeit
 #         self.t.assign(self.i_t * self.dt)
 #         self.i_t.assign_add(1)
 #         self.n_steps_total.assign_add(1)
 #         self.running.assign(tf.cond(self.i_t >= self.n_t, lambda: tf.constant(False), lambda: tf.constant(True)))
 #         self.info.assign(tf.add(self.info, tf.cond(self.running, lambda: "", lambda: "Zeit ist abgelaufen.")))
 #
-#         ## Movement
+#         # Movement
 #         dir_sign = tf.math.sign(action[1])
 #         angle = tf.multiply(action[0], self.pi / 2)  # pi/2 = 90° = -1 left .. +1 right
 #         direction = self.rot.ges
@@ -262,11 +280,11 @@ class GameTF(tf.Module):
 #         self.rot.ges.assign(ges_rotated)
 #         self.rot.pos.assign_add(self.rot.ges * self.dt)
 #
-#         ## Banden
+#         # Banden
 #         kreis_rot = tf.stack([self.rot.pos[0], self.rot.pos[1], self.rot.rad])
 #         rot_trifft_bande = tf.cond(self.schnitt_kreis_bande(kreis_rot), lambda: tf.constant(True), lambda: tf.constant(False))
 #
-#         ## Auswertung
+#         # Auswertung
 #         self.running.assign(tf.cond(
 #             rot_trifft_bande,
 #             lambda: tf.constant(False), lambda: self.running

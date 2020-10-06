@@ -8,25 +8,26 @@ from game_tf import GameTF
 
 class Actor(ActorNetwork):
 
-    def __init__(self, actor_id, actor_event_stop, learner_policy_variables,
-                 replay_buffer, actor_noise, logger, video_recorder):
+    def __init__(self, actor_id, learner_policy_variables, replay_buffer, actor_noise, logger, video_recorder):
         super(Actor, self).__init__(with_target_net=False, name="Actor")
 
         with tf.device(self.device), self.name_scope:
 
-            self.actor_id = actor_id
-            self.actor_event_stop = actor_event_stop
-            self.update_op = tf.no_op
             self.n_step_returns = Params.N_STEP_RETURNS
             self.gamma = Params.GAMMA
+
+            self.actor_id = actor_id
             self.learner_policy_variables = learner_policy_variables
-            self.indices = tf.range(self.n_step_returns)
             self.replay_buffer = replay_buffer.get_client() if Params.BUFFER_FROM_REVERB else replay_buffer
             self.actor_noise = actor_noise
-            self.video_recorder = video_recorder
             self.logger = logger
+            self.video_recorder = video_recorder
 
-            ## Init Env
+            self.record_episode = tf.Variable(False)
+            self.n_episode = tf.Variable(0)
+            self.running = tf.Variable(True)
+
+            # Init Env
             if Params.ENV_NAME == "SC":
                 self.env = GameTF()
             elif Params.ENV_NAME == "GYM":
@@ -41,7 +42,7 @@ class Actor(ActorNetwork):
         with tf.device(self.device), self.name_scope:
 
             tf.while_loop(
-                lambda: tf.logical_not(tf.reshape(tf.py_function(self.actor_event_stop.is_set, inp=[], Tout=[tf.bool]), ())),
+                lambda: self.running,
                 self.do_episode,
                 loop_vars=[]
             )
@@ -52,25 +53,25 @@ class Actor(ActorNetwork):
         with tf.device(self.device), self.name_scope:
 
             # Get episode number
-            n_episode = self.logger.increment_episode()
+            self.n_episode.assign(self.logger.increment_episode())
 
             # Set record state
-            # record_episode.assign(tf.cond(
-            #     tf.logical_and(
-            #         tf.logical_and(Params.RECORD_VIDEO,
-            #                        tf.greater_equal(n_episode, tf.constant(Params.RECORD_START_EP))),
-            #         tf.equal(tf.math.floormod(n_episode, Params.RECORD_FREQ), 0)
-            #     ), lambda: True, lambda: False))
+            self.record_episode.assign(tf.cond(
+                tf.logical_and(
+                    tf.logical_and(Params.RECORD_VIDEO,
+                                   tf.greater_equal(self.n_episode, tf.constant(Params.RECORD_START_EP))),
+                    tf.equal(tf.math.floormod(self.n_episode, Params.RECORD_FREQ), 0)
+                ), lambda: True, lambda: False))
 
-            ## Get env initial state as shape (1, space)
+            # Get env initial state as shape (1, space)
             state0 = self.env.reset()
 
-            ## Do ep steps
-            ep_steps, _, _, ep_reward, ep_frames, _, _, _ = tf.while_loop(
+            # Do ep steps
+            ep_steps, _, _, ep_reward_sum, ep_frames, _, _, _ = tf.while_loop(
                 lambda *args: args[1],
                 self.do_step,
                 loop_vars=[
-                    0, True, state0, 0.,
+                    tf.constant(0), tf.constant(True), state0, tf.constant(0.),
                     tf.TensorArray(tf.uint8, size=1, dynamic_size=True),
                     tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False, element_shape=Params.ENV_OBS_SPACE),
                     tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False, element_shape=Params.ENV_ACT_SPACE),
@@ -78,30 +79,32 @@ class Actor(ActorNetwork):
                 ]
             )
 
-            ## Decrease actor noise sigma after episode
+            # Decrease actor noise sigma after episode
             tf.cond(tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS), lambda: None, self.actor_noise.decrease_sigma)
 
-            ## Update return values
-            ep_avg_reward = ep_reward / tf.cast(ep_steps, Params.DTYPE)
+            # Update return values
+            ep_avg_reward = ep_reward_sum / tf.cast(ep_steps, Params.DTYPE)
 
             # Save video if recorded
-            ep_replay_filename = ""
-            # ep_replay_filename = tf.cond(record_episode, lambda: tf.py_function(recorder.save_video,
-            #                                                                     inp=[ep_frames.stack(), n_episode,
-            #                                                                          tf.round(ep_avg_reward)],
-            #                                                                     Tout=tf.string), lambda: "")
+            ep_replay_filename = tf.cond(
+                self.record_episode,
+                lambda: tf.py_function(self.video_recorder.save_video,
+                                       inp=[ep_frames.stack(), self.n_episode, tf.round(ep_avg_reward)],
+                                       Tout=tf.string),
+                lambda: ""
+            )
 
-            ## Log episode
+            # Log episode
             tf.cond(
-                tf.equal(tf.math.mod(n_episode, tf.constant(Params.ACTOR_LOG_STEPS)), tf.constant(0)),
-                lambda: self.logger.log_ep_actor(n_episode, ep_steps, ep_avg_reward, self.actor_noise.sigma,
+                tf.equal(tf.math.mod(self.n_episode, tf.constant(Params.ACTOR_LOG_STEPS)), tf.constant(0)),
+                lambda: self.logger.log_ep_actor(self.n_episode, ep_steps, ep_avg_reward, self.actor_noise.sigma,
                                                  self.env.info, ep_replay_filename),
                 lambda: None, name="Logger"
             )
 
-            ## Update actor network with learner params
+            # Update actor network with learner params
             tf.cond(
-                tf.equal(tf.math.mod(n_episode, Params.UPDATE_ACTOR_FREQ), 0),
+                tf.equal(tf.math.mod(self.n_episode, Params.UPDATE_ACTOR_FREQ), 0),
                 lambda: update_weights(self.tvariables + self.nvariables, self.learner_policy_variables, tf.constant(1.)),
                 tf.no_op
             )
@@ -114,26 +117,36 @@ class Actor(ActorNetwork):
 
         with tf.device(self.device), self.name_scope:
 
-            ## Predict next action / random in warm up phase, adding exploration noise, returns (1, act_space)
-            action = tf.reshape(
-                tf.cond(
-                    tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS),
-                    lambda: tf.random.uniform((Params.ENV_ACT_SPACE.dims[0],),
-                                              minval=-Params.ENV_ACT_BOUND,
-                                              maxval=Params.ENV_ACT_BOUND),
-                    lambda: tf.add(self.predict_action(tf.reshape(state, (1, -1))),
-                                   self.actor_noise.__call__())
-                ), (self.env.act_space.dims[0],)
+            # Predict next action / random in warm up phase, adding exploration noise, returns (1, act_space)
+            action = tf.cond(
+                tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS),
+                lambda: self.env.warmup_action(),
+                lambda: tf.reshape(
+                    tf.add(
+                        self.predict_action(tf.expand_dims(state, axis=0)),
+                        self.actor_noise.__call__()
+                    ), (Params.ENV_ACT_SPACE.dims[0],)
+                ),
             )
 
-            ## Perform step in env
+            # Perform step in env
             state2, reward, terminal = self.env.step(action)
 
-            ## Save next frame if recording
-            # frames = tf.cond(tf.logical_and(record_episode, tf.equal(tf.math.floormod(n_step, Params.RECORD_STEP_FREQ), 0)),
-            #                  lambda: frames.write(frames.size(), env.get_frame()), lambda: frames)
+            # Print warm up info
+            tf.cond(
+                tf.equal(self.env.n_steps_total, Params.WARM_UP_STEPS),
+                lambda: tf.print(f"Actor {self.actor_id} finish warm up at episode", self.n_episode, "/ step", n_step),
+                lambda: tf.constant(False),
+            )
 
-            ## Increase step counter
+            # Save next frame if recording
+            frames = tf.cond(
+                tf.logical_and(self.record_episode, tf.equal(tf.math.floormod(n_step, Params.RECORD_STEP_FREQ), 0)),
+                lambda: frames.write(frames.size(), self.env.get_frame()),
+                lambda: frames
+            )
+
+            # Increase step counter
             n_step = tf.add(n_step, 1)
             continue_episode = tf.math.logical_and(
                 n_step < Params.MAX_EP_STEPS,
@@ -160,7 +173,7 @@ class Actor(ActorNetwork):
                 _state0 = states_buffer.read(buffer_idx)
                 action0 = actions_buffer.read(buffer_idx)
 
-                ## Add to replay memory
+                # Add to replay memory
                 if Params.BUFFER_FROM_REVERB:
                     _rewards_buffer_stack = tf.concat((tf.repeat(-Params.ENV_REWARD_INF, i), rewards_buffer_stack[i:]), axis=0)
                     # _rewards_buffer_stack = rewards_buffer_stack

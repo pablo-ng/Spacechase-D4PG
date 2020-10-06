@@ -8,13 +8,13 @@ from utils import tf_round
 
 class Logger(tf.Module):
 
-    def __init__(self):
+    def __init__(self, log_dir):
         super().__init__(name="Logger")
         self.device = Params.DEVICE
 
         with tf.device(self.device), self.name_scope:
 
-            self.episode_counter = tf.Variable(0, dtype=tf.int32, name="episode_counter")
+            self.episode_counter = tf.Variable(-1, dtype=tf.int32, name="episode_counter")
             self.episode_counter_cs = tf.CriticalSection(name="episode_counter_cs")
 
             self.get_time = lambda: tf.reshape(tf.py_function(time.time, [], Tout=tf.float64), ()) * 1000
@@ -24,12 +24,10 @@ class Logger(tf.Module):
             self.learner_log_steps = tf.cast(Params.LEARNER_LOG_STEPS, tf.float64)
             self.actor_log_steps = tf.cast(Params.ACTOR_LOG_STEPS, tf.float64)
 
-            ## Init Tensorboard writer
+            # Init Tensorboard writer
             if Params.LOG_TENSORBOARD:
-                log_dir = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + \
-                          f"_{Params.BUFFER_TYPE}_B{Params.MINIBATCH_SIZE}_N{Params.N_STEP_RETURNS}_{Params.NOISE_TYPE}"
-                # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, write_graph=False, write_images=False)
-                self.writer = tf.summary.create_file_writer(log_dir)
+                self.log_dir = "logs/" + log_dir
+                self.writer = tf.summary.create_file_writer(self.log_dir)
             else:
                 self.writer = None
 
@@ -54,6 +52,7 @@ class Logger(tf.Module):
                         tf.cond(tf.not_equal(ep_replay_filename, ""),
                                 lambda: tf.summary.text("Episode Replay", ep_replay_filename, step), lambda: False)
                         tf.summary.scalar("Avg Ep time", avg_ep_time, step)
+                        tf.summary.scalar("Noise variance", noise_sigma, step)
                         self.writer.flush()
 
     def log_step_learner(self, n_step, td_error, priority_beta):

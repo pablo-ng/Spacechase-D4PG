@@ -1,6 +1,9 @@
 import tensorflow as tf
 from os import environ
+import shutil
 import threading
+import datetime
+import time
 
 from params import Params
 from learner import Learner
@@ -43,13 +46,20 @@ def train():
         environ['PYTHONHASHSEED'] = str(Params.SEED)
         tf.random.set_seed(Params.SEED)
 
+    # Construct logdir
+    log_dir = f"{datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}" \
+              f"_{Params.BUFFER_TYPE}_B{Params.MINIBATCH_SIZE}_{Params.N_STEP_RETURNS}N" \
+              f"_{Params.NOISE_TYPE}_Net{'-'.join([str(n_units) for n_units in Params.BASE_NET_ARCHITECTURE])}"
+
     # Init Logger
-    logger = Logger()
+    if Params.DO_LOGGING:
+        logger = Logger(log_dir)
+    else:
+        logger = None
 
     # Init Video Recorder
     if Params.RECORD_VIDEO:
-        video_recorder = VideoRecorder()
-        # record_episode = tf.Variable(Params.RECORD_VIDEO)
+        video_recorder = VideoRecorder(log_dir)
     else:
         video_recorder = None
 
@@ -71,34 +81,51 @@ def train():
     else:
         raise Exception(f"Noise with name {Params.NOISE_TYPE} not found.")
 
-    # Create threading event
-    actor_event_stop = threading.Event()
-
-    ## Init learner
+    # Init learner
     learner = Learner(logger, replay_buffer)
+
+    # Init threads
+    actor_threads = []
     learner_thread = threading.Thread(target=learner.run)
-    learner_thread.start()
 
-    ## Init actors
-    threads = []
-    for n_actor in range(Params.NUM_ACTORS):
-        actor = Actor(n_actor, actor_event_stop, learner.policy_variables,
-                      replay_buffer, actor_noise, logger, video_recorder)
-        thread = threading.Thread(target=actor.run)
-        thread.start()
-        threads.append(thread)
+    try:
 
-    ## Wait for learner to finish
-    learner_thread.join()
+        # Init actors
+        for n_actor in range(Params.NUM_ACTORS):
+            actor = Actor(n_actor, learner.policy_variables, replay_buffer, actor_noise, logger, video_recorder)
+            thread = threading.Thread(target=actor.run)
+            thread.start()
+            actor_threads.append((actor, thread))
 
-    ## Stop actors and wait for finish
-    actor_event_stop.set()
-    for t in threads:
-        t.join()
+        # Start and wait for learner to finish
+        learner_thread.start()
+        while learner_thread.is_alive():
+            time.sleep(10)
+
+    except (KeyboardInterrupt, SystemExit):
+        # Stop learner
+        print("shutting down learner...")
+        learner.running.assign(False)
+        learner_thread.join()
+
+    # Stop actors and wait for finish
+    print("shutting down actors...")
+    for actor, _ in actor_threads:
+        actor.running.assign(False)
+    for _, thread in actor_threads:
+        thread.join()
 
     # Stop reverb server
     if Params.BUFFER_FROM_REVERB:
         replay_buffer.reverb_server.stop()
+
+    # Delete logs if below MIN_STEPS_TRAIN threshold
+    if learner.n_steps < Params.MIN_STEPS_TRAIN:
+        print(f"learner performed {learner.n_steps.value()} steps. clearing log dirs...")
+        if Params.LOG_TENSORBOARD:
+            shutil.rmtree(logger.log_dir, ignore_errors=True)
+        if Params.RECORD_VIDEO:
+            shutil.rmtree(video_recorder.writer_path)
 
 
 if __name__ == '__main__':
