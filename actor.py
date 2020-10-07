@@ -67,11 +67,11 @@ class Actor(ActorNetwork):
             state0 = self.env.reset()
 
             # Do ep steps
-            ep_steps, _, _, ep_reward_sum, ep_frames, _, _, _ = tf.while_loop(
+            ep_steps, _, _, ep_reward_sum, ep_reward_sum_discounted, ep_frames, _, _, _ = tf.while_loop(
                 lambda *args: args[1],
                 self.do_step,
                 loop_vars=[
-                    tf.constant(0), tf.constant(True), state0, tf.constant(0.),
+                    tf.constant(0), tf.constant(True), state0, tf.constant(0.), tf.constant(0.),
                     tf.TensorArray(tf.uint8, size=1, dynamic_size=True),
                     tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False, element_shape=Params.ENV_OBS_SPACE),
                     tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False, element_shape=Params.ENV_ACT_SPACE),
@@ -82,14 +82,14 @@ class Actor(ActorNetwork):
             # Decrease actor noise sigma after episode
             tf.cond(tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS), lambda: None, self.actor_noise.decrease_sigma)
 
-            # Update return values
+            # Compute average reward
             ep_avg_reward = ep_reward_sum / tf.cast(ep_steps, Params.DTYPE)
 
             # Save video if recorded
             ep_replay_filename = tf.cond(
                 self.record_episode,
                 lambda: tf.py_function(self.video_recorder.save_video,
-                                       inp=[ep_frames.stack(), self.n_episode, tf.round(ep_avg_reward)],
+                                       inp=[ep_frames.stack(), self.n_episode],
                                        Tout=tf.string),
                 lambda: ""
             )
@@ -97,8 +97,8 @@ class Actor(ActorNetwork):
             # Log episode
             tf.cond(
                 tf.equal(tf.math.mod(self.n_episode, tf.constant(Params.ACTOR_LOG_STEPS)), tf.constant(0)),
-                lambda: self.logger.log_ep_actor(self.n_episode, ep_steps, ep_avg_reward, self.actor_noise.sigma,
-                                                 self.env.info, ep_replay_filename),
+                lambda: self.logger.log_ep_actor(self.n_episode, ep_steps, ep_avg_reward, ep_reward_sum_discounted,
+                                                 self.actor_noise.sigma, self.env.info, ep_replay_filename),
                 lambda: None, name="Logger"
             )
 
@@ -112,7 +112,8 @@ class Actor(ActorNetwork):
             return []
 
     # noinspection PyUnusedLocal
-    def do_step(self, n_step, terminal, state, ep_reward_sum, frames, states_buffer, actions_buffer, rewards_buffer):
+    def do_step(self, n_step, terminal, state, ep_reward_sum, ep_reward_sum_discounted,
+                frames, states_buffer, actions_buffer, rewards_buffer):
         print("retracing do_step")
 
         with tf.device(self.device), self.name_scope:
@@ -206,6 +207,7 @@ class Actor(ActorNetwork):
             )
 
             return n_step, continue_episode, state2, tf.add(ep_reward_sum, reward), \
+                tf.add(ep_reward_sum_discounted, tf.pow(self.gamma, tf.cast(n_step-1, Params.DTYPE)) * reward), \
                 frames, states_buffer, actions_buffer, rewards_buffer
 
 

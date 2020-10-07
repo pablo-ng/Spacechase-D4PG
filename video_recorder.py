@@ -2,7 +2,6 @@ from cv2 import VideoWriter, VideoWriter_fourcc
 from os import mkdir
 from os.path import abspath, isdir
 import numpy as np
-import datetime
 import imageio
 
 from params import Params
@@ -38,8 +37,8 @@ class VideoRecorder:
             if self.video_writer is not None:
                 self.video_writer.write(np.zeros(self.frame_size.astype(int)))
 
-    def save_video(self, frames, n_episode, ep_avg_reward):
-        path = self.writer_path + '/episode_' + str(n_episode.numpy()) + '_avg_reward_' + str(int(ep_avg_reward))
+    def save_video(self, frames, n_episode):
+        path = self.writer_path + '/' + str(n_episode.numpy()) + '_episode'
 
         if self.out_type == "GIF":
             path += ".gif"

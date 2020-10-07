@@ -1,5 +1,4 @@
 import tensorflow as tf
-import datetime
 import time
 
 from params import Params
@@ -31,7 +30,8 @@ class Logger(tf.Module):
             else:
                 self.writer = None
 
-    def log_ep_actor(self, n_episode, ep_steps, ep_avg_reward, noise_sigma, env_info, ep_replay_filename):
+    def log_ep_actor(self, n_episode, ep_steps, ep_avg_reward, ep_reward_sum_discounted,
+                     noise_sigma, env_info, ep_replay_filename):
         if Params.DO_LOGGING:
             print("retracing log_ep_tensorboard")
             with tf.device(self.device):
@@ -49,6 +49,7 @@ class Logger(tf.Module):
                         step = tf.cast(n_episode, tf.int64)
                         tf.summary.scalar("Steps", ep_steps, step)
                         tf.summary.scalar("Average Reward", ep_avg_reward, step)
+                        tf.summary.scalar("Reward Sum Discounted", ep_reward_sum_discounted, step)
                         tf.cond(tf.not_equal(ep_replay_filename, ""),
                                 lambda: tf.summary.text("Episode Replay", ep_replay_filename, step), lambda: False)
                         tf.summary.scalar("Avg Ep time", avg_ep_time, step)

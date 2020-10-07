@@ -11,7 +11,7 @@ class Params:
 
     MIN_STEPS_TRAIN = tf.constant(8000)  # minimum number of steps to train for (so logs will be deleted on interrupt)
     MAX_STEPS_TRAIN = tf.constant(200000)  # total number of steps to train for
-    MAX_EP_STEPS = tf.constant(1000)  # max steps per episode
+    MAX_EP_STEPS = tf.constant(1200)  # max steps per episode
     WARM_UP_STEPS = tf.constant(1000)  # number of steps per actor to perform randomly chosen action before predicting
 
     # Environment params
@@ -51,10 +51,10 @@ class Params:
     MINIBATCH_SIZE = tf.constant(256, dtype=tf.int32)
     ACTOR_LEARNING_RATE = tf.constant(0.0001)
     CRITIC_LEARNING_RATE = tf.constant(0.001)
-    GAMMA = tf.constant(0.99)  # Discount rate for future rewards
+    GAMMA = tf.constant(0.996)  # Discount rate for future rewards
     TAU = tf.constant(0.001, dtype=DTYPE)  # Parameter for soft target network updates
     N_STEP_RETURNS = tf.constant(5)
-    BASE_NET_ARCHITECTURE = [400, 500]  # shallow net seems to work best
+    BASE_NET_ARCHITECTURE = [900, 800]  # shallow net seems to work best
     NUM_ATOMS = 51  # Number of atoms in output layer of distributional critic
     WITH_BATCH_NORM = tf.constant(True)
     WITH_DROPOUT = tf.constant(False)
