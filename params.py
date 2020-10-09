@@ -10,7 +10,7 @@ class Params:
     UPDATE_ACTOR_FREQ = 5  # actor parameter update every n episodes
 
     MIN_STEPS_TRAIN = tf.constant(8000)  # minimum number of steps to train for (so logs will be deleted on interrupt)
-    MAX_STEPS_TRAIN = tf.constant(200000)  # total number of steps to train for
+    MAX_STEPS_TRAIN = tf.constant(400000)  # total number of steps to train for
     MAX_EP_STEPS = tf.constant(1200)  # max steps per episode
     WARM_UP_STEPS = tf.constant(1000)  # number of steps per actor to perform randomly chosen action before predicting
 
@@ -36,7 +36,7 @@ class Params:
         ENV_ACT_BOUND = tf.constant([1.])
 
         ENV_V_MAX = tf.cast(tf.constant(1 * ENV_N_GOALS), tf.float32)
-        ENV_V_MIN = tf.constant(-ENV_V_MAX)  # todo better 0?
+        ENV_V_MIN = tf.constant(-ENV_V_MAX)
         ENV_REWARD_INF = tf.constant(999.)
 
     # Replay Buffer
@@ -54,7 +54,7 @@ class Params:
     GAMMA = tf.constant(0.996)  # Discount rate for future rewards
     TAU = tf.constant(0.001, dtype=DTYPE)  # Parameter for soft target network updates
     N_STEP_RETURNS = tf.constant(5)
-    BASE_NET_ARCHITECTURE = [900, 800]  # shallow net seems to work best
+    BASE_NET_ARCHITECTURE = [600, 600, 600]  # shallow net seems to work best
     NUM_ATOMS = 51  # Number of atoms in output layer of distributional critic
     WITH_BATCH_NORM = tf.constant(True)
     WITH_DROPOUT = tf.constant(False)
@@ -67,14 +67,14 @@ class Params:
     NOISE_SIGMA = tf.constant(0.3)
     NOISE_SIGMA_MIN = tf.constant(5e-3)  # when to stop decreasing sigma
     NOISE_THETA = tf.constant(0.15)
-    NOISE_DECAY = tf.constant(0.9999)
+    NOISE_DECAY = tf.constant(0.99982)
     NOISE_X0 = tf.constant(0.)
 
     # Video Recorder
     RECORD_VIDEO = tf.constant(True)
     RECORD_VIDEO_TYPE = "GIF"  # GIF or MP4
     FRAME_SIZE = tf.constant([64., 64.])
-    RECORD_START_EP = tf.constant(0)  # start recording at episode n
+    RECORD_START_EP = tf.constant(500)  # start recording at episode n
     RECORD_FREQ = tf.constant(150)  # record episodes and save to video file every n epsidoes
     RECORD_STEP_FREQ = tf.constant(3)  # do record step every n steps (to skip steps in between)
 

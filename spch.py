@@ -17,6 +17,7 @@ from logger import Logger
 
 """
 TODO
+- add params overview (txt) for each run; delete ggf.
 - logger: see write_graph and write_images
 - analytical solution, train agent only for control / for approaching x/y coords
 - name all operations, then can use profiler: 
