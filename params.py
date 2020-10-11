@@ -43,7 +43,7 @@ class Params:
     BUFFER_TYPE = "ReverbPrioritized"  # Uniform, ReverbUniform, ReverbPrioritized
     BUFFER_SIZE = tf.constant(1000000, dtype=tf.int32)  # must be power of 2 for PER
     BUFFER_PRIORITY_ALPHA = tf.constant(0.6)  # (0.0 = Uniform sampling, 1.0 = Greedy prioritisation)
-    BUFFER_PRIORITY_BETA_START = tf.constant(0.4, dtype=tf.float64)  # (0 - no bias correction, 1 - full bias correction)
+    BUFFER_PRIORITY_BETA_START = tf.constant(0.4, dtype=tf.float64)  # (0: no bias correction, 1: full bias correction)
     BUFFER_PRIORITY_BETA_END = tf.constant(1.0, dtype=tf.float64)
     BUFFER_PRIORITY_EPSILON = tf.constant(0.00001)
 
