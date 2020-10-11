@@ -59,8 +59,8 @@ class Actor(ActorNetwork):
             self.record_episode.assign(tf.cond(
                 tf.logical_and(
                     tf.logical_and(Params.RECORD_VIDEO,
-                                   tf.greater_equal(self.n_episode, tf.constant(Params.RECORD_START_EP))),
-                    tf.equal(tf.math.floormod(self.n_episode, Params.RECORD_FREQ), 0)
+                                   tf.greater_equal(self.n_episode, Params.RECORD_START_EP)),
+                    tf.equal(tf.math.floormod(self.n_episode - Params.RECORD_START_EP, Params.RECORD_FREQ), 0)
                 ), lambda: True, lambda: False))
 
             # Get env initial state as shape (1, space)
@@ -73,14 +73,19 @@ class Actor(ActorNetwork):
                 loop_vars=[
                     tf.constant(0), tf.constant(True), state0, tf.constant(0.), tf.constant(0.),
                     tf.TensorArray(tf.uint8, size=1, dynamic_size=True),
-                    tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False, element_shape=Params.ENV_OBS_SPACE),
-                    tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False, element_shape=Params.ENV_ACT_SPACE),
-                    tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False, element_shape=()),
+                    tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False,
+                                   element_shape=Params.ENV_OBS_SPACE),
+                    tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False,
+                                   element_shape=Params.ENV_ACT_SPACE),
+                    tf.TensorArray(Params.DTYPE, size=self.n_step_returns, dynamic_size=False,
+                                   element_shape=()),
                 ]
             )
 
             # Decrease actor noise sigma after episode
-            tf.cond(tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS), lambda: None, self.actor_noise.decrease_sigma)
+            tf.cond(tf.less(self.env.n_steps_total, Params.WARM_UP_STEPS),
+                    lambda: None,
+                    self.actor_noise.decrease_sigma)
 
             # Compute average reward
             ep_avg_reward = ep_reward_sum / tf.cast(ep_steps, Params.DTYPE)
@@ -105,7 +110,8 @@ class Actor(ActorNetwork):
             # Update actor network with learner params
             tf.cond(
                 tf.equal(tf.math.mod(self.n_episode, Params.UPDATE_ACTOR_FREQ), 0),
-                lambda: update_weights(self.tvariables + self.nvariables, self.learner_policy_variables, tf.constant(1.)),
+                lambda: update_weights(self.tvariables + self.nvariables,
+                                       self.learner_policy_variables, tf.constant(1.)),
                 tf.no_op
             )
 
@@ -176,7 +182,9 @@ class Actor(ActorNetwork):
 
                 # Add to replay memory
                 if Params.BUFFER_FROM_REVERB:
-                    _rewards_buffer_stack = tf.concat((tf.repeat(-Params.ENV_REWARD_INF, i), rewards_buffer_stack[i:]), axis=0)
+                    _rewards_buffer_stack = tf.concat(
+                        (tf.repeat(-Params.ENV_REWARD_INF, i), rewards_buffer_stack[i:]),
+                        axis=0)
                     # _rewards_buffer_stack = rewards_buffer_stack
                     if Params.BUFFER_IS_PRIORITIZED:
                         max_priority = self.replay_buffer.sample(Params.BUFFER_TYPE + "_max",

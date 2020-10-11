@@ -55,4 +55,4 @@ Verification and restart
     source venv/bin/activate
     pip install wheel
     pip install tensorflow gym opencv-python imageio dm-reverb jupyterlab
-
+    ipython kernel install --user
