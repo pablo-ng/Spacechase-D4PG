@@ -3,15 +3,15 @@ import tensorflow as tf
 
 class ParamsTest:
 
-    MODEL_PATH = "models/2020_10_15_02_01_10_ReverbPrioritized_B512_5N_Gaussian_Net640-624-592"
+    MODEL_PATH = "models/2020_10_15_01_03_00_ReverbPrioritized_B1024_5N_Gaussian_Net640-624-592"
     N_EPISODES = tf.constant(10)
 
 
 class Params:
 
-    ENABLE_XLA = False  # optimizing compiler, see https://www.tensorflow.org/xla
-    # set XLA envvars: XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/lib/cuda;
-    # to enable auto-clustering on CPU: TF_XLA_FLAGS=--tf_xla_cpu_global_jit
+    ENABLE_XLA = True  # optimizing compiler, see https://www.tensorflow.org/xla
+    # set XLA envvars: export XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/lib/cuda;
+    # to enable auto-clustering on CPU: export TF_XLA_FLAGS=--tf_xla_cpu_global_jit
 
     DEVICE = "GPU:0"
     DTYPE = 'float32'  # should be float32 at least
@@ -68,7 +68,7 @@ class Params:
     GAMMA = tf.constant(0.996)  # Discount rate for future rewards
     TAU = tf.constant(0.001, dtype=DTYPE)  # Parameter for soft target network updates
     N_STEP_RETURNS = tf.constant(5)
-    BASE_NET_ARCHITECTURE = [640, 624, 592]  # shallow net seems to work best, should be divisible by 16
+    BASE_NET_ARCHITECTURE = [1024]  # shallow net seems to work best, should be divisible by 16
     NUM_ATOMS = 51  # Number of atoms in output layer of distributional critic
     WITH_BATCH_NORM = tf.constant(True)
     WITH_DROPOUT = tf.constant(False)
