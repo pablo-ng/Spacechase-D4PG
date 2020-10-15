@@ -28,6 +28,9 @@ class Learner(tf.Module):
             # Save shared variables
             self.policy_variables = self.actor.tvariables + self.actor.nvariables
 
+    def save_model(self, path):
+        self.actor.actor_network.save(path, overwrite=True, include_optimizer=False, save_format="tf")
+
     @tf.function()
     def run(self):
         print("retracing learner run")
@@ -94,8 +97,8 @@ class Learner(tf.Module):
             values = self.critic.critic_network([s_batch, actions], training=False)
 
             # Compute (dq / da * da / dtheta = dq / dtheta) grads (action values grads wrt. actor network weights)
-            action_grads = tf.gradients(values, actions, Params.Z_ATOMS)[0]
-            actor_gradients = tf.gradients(actions, self.actor.tvariables, -action_grads)
+            action_gradients = tf.gradients(values, actions, Params.Z_ATOMS)[0]
+            actor_gradients = tf.gradients(actions, self.actor.tvariables, -action_gradients)
 
             # Normalize grads element-wise
             actor_gradients = [tf.divide(gradient, tf.cast(self.batch_size, self.dtype)) for gradient in actor_gradients]

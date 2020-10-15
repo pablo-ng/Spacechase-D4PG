@@ -1,10 +1,21 @@
 import tensorflow as tf
 
 
+class ParamsTest:
+
+    MODEL_PATH = "models/2020_10_15_02_01_10_ReverbPrioritized_B512_5N_Gaussian_Net640-624-592"
+    N_EPISODES = tf.constant(10)
+
+
 class Params:
 
+    ENABLE_XLA = False  # optimizing compiler, see https://www.tensorflow.org/xla
+    # set XLA envvars: XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/lib/cuda;
+    # to enable auto-clustering on CPU: TF_XLA_FLAGS=--tf_xla_cpu_global_jit
+
     DEVICE = "GPU:0"
-    DTYPE = 'float32'
+    DTYPE = 'float32'  # should be float32 at least
+    USE_MIXED_PRECISION = False  # set if GPU computeCapability >= 7 (https://www.tensorflow.org/guide/mixed_precision)
     SEED = 123
     NUM_ACTORS = 4  # number of parallel distributed actors
     UPDATE_ACTOR_FREQ = 5  # actor parameter update every n episodes
@@ -12,7 +23,7 @@ class Params:
     MIN_STEPS_TRAIN = tf.constant(8000)  # minimum number of steps to train for (so logs will be deleted on interrupt)
     MAX_STEPS_TRAIN = tf.constant(400000)  # total number of steps to train for
     MAX_EP_STEPS = tf.constant(1200)  # max steps per episode
-    WARM_UP_STEPS = tf.constant(1000)  # number of steps per actor to perform randomly chosen action before predicting
+    WARM_UP_STEPS = tf.constant(2500)  # number of steps per actor to perform randomly chosen action before predicting
 
     # Environment params
     # V_min and V_max = Lower and upper bounds of critic value output distribution
@@ -35,12 +46,15 @@ class Params:
         ENV_ACT_SPACE = tf.TensorShape(2,)
         ENV_ACT_BOUND = tf.constant([1.])
 
-        ENV_V_MAX = tf.cast(tf.constant(1 * ENV_N_GOALS), tf.float32)
+        ENV_V_MAX = tf.cast(tf.constant(1 * ENV_N_GOALS), DTYPE)
         ENV_V_MIN = tf.constant(-ENV_V_MAX)
         ENV_REWARD_INF = tf.constant(999.)
 
+    else:
+        raise Exception(f"Environment with name {ENV_NAME} not found.")
+
     # Replay Buffer
-    BUFFER_TYPE = "ReverbPrioritized"  # Uniform, ReverbUniform, ReverbPrioritized
+    BUFFER_TYPE = "ReverbPrioritized"  # Uniform, ReverbUniform, ReverbPrioritized todo try change
     BUFFER_SIZE = tf.constant(1000000, dtype=tf.int32)  # must be power of 2 for PER
     BUFFER_PRIORITY_ALPHA = tf.constant(0.6)  # (0.0 = Uniform sampling, 1.0 = Greedy prioritisation)
     BUFFER_PRIORITY_BETA_START = tf.constant(0.4, dtype=tf.float64)  # (0: no bias correction, 1: full bias correction)
@@ -48,13 +62,13 @@ class Params:
     BUFFER_PRIORITY_EPSILON = tf.constant(0.00001)
 
     # Networks
-    MINIBATCH_SIZE = tf.constant(256, dtype=tf.int32)
+    MINIBATCH_SIZE = tf.constant(512, dtype=tf.int32)
     ACTOR_LEARNING_RATE = tf.constant(0.0001)
     CRITIC_LEARNING_RATE = tf.constant(0.001)
     GAMMA = tf.constant(0.996)  # Discount rate for future rewards
     TAU = tf.constant(0.001, dtype=DTYPE)  # Parameter for soft target network updates
     N_STEP_RETURNS = tf.constant(5)
-    BASE_NET_ARCHITECTURE = [600, 600, 600]  # shallow net seems to work best
+    BASE_NET_ARCHITECTURE = [640, 624, 592]  # shallow net seems to work best, should be divisible by 16
     NUM_ATOMS = 51  # Number of atoms in output layer of distributional critic
     WITH_BATCH_NORM = tf.constant(True)
     WITH_DROPOUT = tf.constant(False)
@@ -67,7 +81,7 @@ class Params:
     NOISE_SIGMA = tf.constant(0.3)
     NOISE_SIGMA_MIN = tf.constant(5e-3)  # when to stop decreasing sigma
     NOISE_THETA = tf.constant(0.15)
-    NOISE_DECAY = tf.constant(0.99982)
+    NOISE_DECAY = tf.constant(0.999253712)
     NOISE_X0 = tf.constant(0.)
 
     # Video Recorder
@@ -80,10 +94,11 @@ class Params:
 
     LOG_TENSORBOARD = tf.constant(True)  # start with: $ tensorboard --logdir logs --reload_interval 5
     LOG_CONSOLE = tf.constant(False)  # print logs to console
-    ACTOR_LOG_STEPS = tf.constant(25)  # log actor status every n episodes steps
+    ACTOR_LOG_STEPS = tf.constant(25)  # log actor status every n episodes
     LEARNER_LOG_STEPS = tf.constant(200)  # log learner status every n learner steps
     TENSORFLOW_PROFILER = tf.constant(False)
     PLOT_MODELS = tf.constant(False)  # plot model summary
+    SAVE_MODEL = tf.constant(True)  # save actor network after training
 
     """
     

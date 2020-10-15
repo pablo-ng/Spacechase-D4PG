@@ -56,3 +56,15 @@ Verification and restart
     pip install wheel
     pip install tensorflow gym opencv-python imageio dm-reverb jupyterlab
     ipython kernel install --user
+
+## Using TF Profiler
+
+### Installation
+
+    source venv/bin/activate
+    pip install tensorboard_plugin_profile
+
+### Run (needs admin privileges)
+
+    sudo venv/bin/tensorboard --logdir logs --reload_interval 5 --port 6007
+    sudo venv/bin/python spch.py

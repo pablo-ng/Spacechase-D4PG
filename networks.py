@@ -41,7 +41,10 @@ class ActorNetwork(tf.Module):
         with tf.device(self.device), self.name_scope:
             # Set up actor net
             self.actor_network = self.build_model()
-            self.actor_network.compile(optimizer=tf.keras.optimizers.Adam(Params.ACTOR_LEARNING_RATE), loss='mse')
+            optimizer = tf.keras.optimizers.Adam(learning_rate=Params.ACTOR_LEARNING_RATE)
+            if Params.USE_MIXED_PRECISION:
+                optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(optimizer, loss_scale='dynamic')
+            self.actor_network.compile(optimizer=optimizer, loss='mse')
             self.tvariables = self.actor_network.trainable_variables
             self.nvariables = self.actor_network.non_trainable_variables
 
@@ -50,7 +53,11 @@ class ActorNetwork(tf.Module):
                 self.target_actor_network = self.build_model()
                 self.target_tvariables = self.target_actor_network.trainable_variables
                 self.target_nvariables = self.target_actor_network.non_trainable_variables
-                update_weights(self.target_tvariables + self.target_nvariables, self.tvariables + self.nvariables, tf.constant(1.))
+                update_weights(
+                    self.target_tvariables + self.target_nvariables,
+                    self.tvariables + self.nvariables,
+                    tf.constant(1.)
+                )
 
                 # Compile target; Optimizer and loss are arbitrary (needed for feed forward)
                 self.target_actor_network.compile(optimizer='sgd', loss='mse')
@@ -64,8 +71,10 @@ class ActorNetwork(tf.Module):
         with tf.device(self.device), self.name_scope:
             inputs = tf.keras.Input(shape=Params.ENV_OBS_SPACE)
             x, regularizer = base_net(inputs)
-            x = tf.keras.layers.Dense(Params.ENV_ACT_SPACE.dims[0], activation='tanh', kernel_regularizer=regularizer,
+            x = tf.keras.layers.Dense(Params.ENV_ACT_SPACE.dims[0], kernel_regularizer=regularizer,
                                       kernel_initializer=tf.random_uniform_initializer(-0.003, 0.003))(x)
+            # output layer dtype should >= float32
+            x = tf.keras.layers.Activation('tanh', dtype=Params.DTYPE, name='actions')(x)
             x = tf.keras.layers.Multiply()([x, Params.ENV_ACT_BOUND])
             model = tf.keras.Model(inputs, x)
             return model
@@ -86,8 +95,11 @@ class CriticNetwork(tf.Module):
         with tf.device(self.device), self.name_scope:
             # Set up critic net
             self.critic_network = self.build_model()
+            optimizer = tf.keras.optimizers.Adam(learning_rate=Params.CRITIC_LEARNING_RATE)
+            if Params.USE_MIXED_PRECISION:
+                optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(optimizer, loss_scale='dynamic')
             self.critic_network.compile(
-                optimizer=tf.keras.optimizers.Adam(learning_rate=Params.CRITIC_LEARNING_RATE),
+                optimizer=optimizer,
                 loss=tf.keras.losses.CategoricalCrossentropy(reduction="none", from_logits=False)
                 # not from logits as y_pred encodes a probability distribution
             )
@@ -98,7 +110,11 @@ class CriticNetwork(tf.Module):
             self.target_critic_network = self.build_model()
             self.target_tvariables = self.target_critic_network.trainable_variables
             self.target_nvariables = self.target_critic_network.non_trainable_variables
-            update_weights(self.target_tvariables + self.target_nvariables, self.tvariables + self.nvariables, tf.constant(1.))
+            update_weights(
+                self.target_tvariables + self.target_nvariables,
+                self.tvariables + self.nvariables,
+                tf.constant(1.)
+            )
 
             # Compile target; Optimizer and loss are arbitrary (needed for feed forward)
             self.target_critic_network.compile(optimizer='sgd', loss='mse')
@@ -117,7 +133,8 @@ class CriticNetwork(tf.Module):
             output_logits = tf.keras.layers.Dense(Params.NUM_ATOMS, activation="linear",
                                                   kernel_initializer=tf.random_uniform_initializer(-0.003, 0.003),
                                                   bias_initializer=tf.random_uniform_initializer(-0.003, 0.003))(x)
-            output_probs = tf.keras.layers.Softmax()(output_logits)
+            # output layer dtype should >= float32
+            output_probs = tf.keras.layers.Softmax(dtype=Params.DTYPE, name='output_probs')(output_logits)
 
             model = tf.keras.Model(inputs=[inputs, action], outputs=output_probs)
             return model
@@ -131,13 +148,17 @@ class CriticNetwork(tf.Module):
                 y_ = self.critic_network(x, training=True)
                 # loss_value = self.critic_network.loss(labels=tf.stop_gradient(target_z_projected), logits=y_)
                 loss_value = self.critic_network.loss(y_true=tf.stop_gradient(target_z_projected), y_pred=y_)
+                if Params.USE_MIXED_PRECISION:
+                    loss_value = self.critic_network.optimizer.get_scaled_loss(loss_value)
                 weighted_loss = tf.multiply(loss_value, is_weights)
                 mean_loss = tf.reduce_mean(weighted_loss)
                 l2_reg_loss = 0.  # could add L2 weight regularisation
                 total_loss = mean_loss + l2_reg_loss
 
-            grads = tape.gradient(total_loss, self.tvariables)
-            self.critic_network.optimizer.apply_gradients(zip(grads, self.tvariables))
+            gradients = tape.gradient(total_loss, self.tvariables)
+            if Params.USE_MIXED_PRECISION:
+                gradients = self.critic_network.optimizer.get_unscaled_gradients(gradients)
+            self.critic_network.optimizer.apply_gradients(zip(gradients, self.tvariables))
             return loss_value
 
 

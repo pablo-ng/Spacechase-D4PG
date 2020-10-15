@@ -1,7 +1,9 @@
 import tensorflow as tf
 
+from params import Params
 
-@tf.function(input_signature=[tf.TensorSpec((), tf.float32), tf.TensorSpec((), tf.int32)])
+
+@tf.function(input_signature=[tf.TensorSpec((), Params.DTYPE), tf.TensorSpec((), tf.int32)])
 def tf_round(x, decimals=0):
     print("retracing tf_round")
     multiplier = tf.cast(10 ** decimals, dtype=x.dtype)
@@ -59,5 +61,52 @@ def l2_project(z_p, p, z_q):
     return tf.reduce_sum(tf.clip_by_value(1. - delta_hat, 0., 1.) * p, 2)
 
 
+class Counter(tf.Module):
 
+    def __init__(self, name, start, dtype):
+        super().__init__(name=name)
+        self.device = Params.DEVICE
+
+        with tf.device(self.device), self.name_scope:
+            self.start = start
+            self.counter = tf.Variable(start, dtype=dtype, name=name)
+            self.counter_cs = tf.CriticalSection(name=name+"_cs")
+
+    def increment(self, increment=1):
+        """
+        Increments counter in a thread safe manner.
+        """
+        with tf.device(self.device), self.name_scope:
+            print("retracing Counter increment")
+
+            def assign_add():
+                return self.counter.assign_add(increment).value()
+
+            return self.counter_cs.execute(assign_add)
+
+    def val(self):
+        """
+        Get the counter value in a thread safe manner.
+        """
+        with tf.device(self.device), self.name_scope:
+            print("retracing Counter call")
+
+            def get_value():
+                return self.counter.value()
+
+            return self.counter_cs.execute(get_value)
+
+    def reset(self):
+        """
+        Reset the counter value in a thread safe manner and returns last value.
+        """
+        with tf.device(self.device), self.name_scope:
+            print("retracing Counter reset")
+
+            def reset():
+                val = self.counter.value()
+                self.counter.assign(self.start)
+                return val
+
+            return self.counter_cs.execute(reset)
 

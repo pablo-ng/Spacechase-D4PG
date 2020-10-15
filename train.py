@@ -17,7 +17,6 @@ from logger import Logger
 
 """
 TODO
-- add params overview (txt) for each run; delete ggf.
 - logger: see write_graph and write_images
 - analytical solution, train agent only for control / for approaching x/y coords
 - name all operations, then can use profiler: 
@@ -34,12 +33,21 @@ TODO
 
 def train():
 
+    # enable XLA
+    if Params.ENABLE_XLA:
+        tf.config.optimizer.set_jit(True)
+
     # Start a gRPC server at port 6009
     if Params.TENSORFLOW_PROFILER:
         tf.profiler.experimental.server.start(6009)
 
-    # Set TF dtype and filter devices
+    # Set TF / Keras dtype
     tf.keras.backend.set_floatx(Params.DTYPE)
+    if Params.USE_MIXED_PRECISION:
+        policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+        tf.keras.mixed_precision.experimental.set_policy(policy)
+
+    # Hide devices / GPU
     # environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
     # Set random seed
@@ -54,13 +62,13 @@ def train():
 
     # Init Logger
     if Params.DO_LOGGING:
-        logger = Logger(log_dir)
+        logger = Logger("logs/" + log_dir)
     else:
         logger = None
 
     # Init Video Recorder
     if Params.RECORD_VIDEO:
-        video_recorder = VideoRecorder(log_dir)
+        video_recorder = VideoRecorder("recorded/" + log_dir)
     else:
         video_recorder = None
 
@@ -127,6 +135,10 @@ def train():
             shutil.rmtree(logger.log_dir, ignore_errors=True)
         if Params.RECORD_VIDEO:
             shutil.rmtree(video_recorder.writer_path)
+    else:
+        if Params.SAVE_MODEL:
+            print("saving model...")
+            learner.save_model("models/" + log_dir)
 
 
 if __name__ == '__main__':

@@ -63,7 +63,7 @@ class GymTF(tf.Module):
 
     def get_frame(self):
         with tf.device(self.device), self.name_scope:
-            return tf.cast(tf.zeros(tf.cast(self.frame_size, tf.int32)), tf.uint8)
+            return tf.zeros(tf.cast(self.frame_size, tf.int32), tf.uint8)
 
 
 

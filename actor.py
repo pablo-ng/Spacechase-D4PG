@@ -53,7 +53,7 @@ class Actor(ActorNetwork):
         with tf.device(self.device), self.name_scope:
 
             # Get episode number
-            self.n_episode.assign(self.logger.increment_episode())
+            self.n_episode.assign(self.logger.episode_counter.increment())
 
             # Set record state
             self.record_episode.assign(tf.cond(
@@ -100,6 +100,7 @@ class Actor(ActorNetwork):
             )
 
             # Log episode
+            self.logger.actor_steps_counter.increment(ep_steps)
             tf.cond(
                 tf.equal(tf.math.mod(self.n_episode, tf.constant(Params.ACTOR_LOG_STEPS)), tf.constant(0)),
                 lambda: self.logger.log_ep_actor(self.n_episode, ep_steps, ep_avg_reward, ep_reward_sum_discounted,

@@ -2,7 +2,7 @@ import tensorflow as tf
 import time
 
 from params import Params
-from utils import tf_round
+from utils import tf_round, Counter
 
 
 class Logger(tf.Module):
@@ -13,22 +13,39 @@ class Logger(tf.Module):
 
         with tf.device(self.device), self.name_scope:
 
-            self.episode_counter = tf.Variable(-1, dtype=tf.int32, name="episode_counter")
-            self.episode_counter_cs = tf.CriticalSection(name="episode_counter_cs")
+            self.episode_counter = Counter("episode_counter", start=-1, dtype=tf.int32)
+            self.actor_steps_counter = Counter("actor_steps_counter", start=0, dtype=tf.int32)
 
             self.get_time = lambda: tf.reshape(tf.py_function(time.time, [], Tout=tf.float64), ()) * 1000
             self.actor_time = tf.Variable(self.get_time())
             self.learner_time = tf.Variable(self.get_time())
 
             self.learner_log_steps = tf.cast(Params.LEARNER_LOG_STEPS, tf.float64)
-            self.actor_log_steps = tf.cast(Params.ACTOR_LOG_STEPS, tf.float64)
 
             # Init Tensorboard writer
             if Params.LOG_TENSORBOARD:
-                self.log_dir = "logs/" + log_dir
+                self.log_dir = log_dir
                 self.writer = tf.summary.create_file_writer(self.log_dir)
             else:
                 self.writer = None
+
+            # Log parameters
+            self.log_params()
+
+    def log_params(self):
+        if Params.DO_LOGGING:
+            print("retracing log_params")
+            with tf.device(self.device):
+
+                params = [f"{attr}: {getattr(Params, attr)}" for attr in dir(Params) if not attr.startswith("__")]
+                params_string = "\n".join(params)
+
+                if Params.LOG_CONSOLE:
+                    tf.print("\n\n"+params_string+"\n\n")
+
+                if Params.LOG_TENSORBOARD:
+                    with self.writer.as_default():
+                        tf.summary.text("Params", params_string, step=0)
 
     def log_ep_actor(self, n_episode, ep_steps, ep_avg_reward, ep_reward_sum_discounted,
                      noise_sigma, env_info, ep_replay_filename):
@@ -37,7 +54,8 @@ class Logger(tf.Module):
             with tf.device(self.device):
 
                 curr_time = self.get_time()
-                avg_ep_time = (curr_time - self.actor_time.value()) / self.actor_log_steps
+                actor_steps = tf.cast(self.actor_steps_counter.reset(), tf.float64)
+                avg_step_time = (curr_time - self.actor_time.value()) / actor_steps
                 self.actor_time.assign(curr_time)
 
                 if Params.LOG_CONSOLE:
@@ -50,9 +68,9 @@ class Logger(tf.Module):
                         tf.summary.scalar("Steps", ep_steps, step)
                         tf.summary.scalar("Average Reward", ep_avg_reward, step)
                         tf.summary.scalar("Reward Sum Discounted", ep_reward_sum_discounted, step)
-                        tf.cond(tf.not_equal(ep_replay_filename, ""),
-                                lambda: tf.summary.text("Episode Replay", ep_replay_filename, step), lambda: False)
-                        tf.summary.scalar("Avg Ep time", avg_ep_time, step)
+                        # tf.cond(tf.not_equal(ep_replay_filename, ""),
+                        #         lambda: tf.summary.text("Episode Replay", ep_replay_filename, step), lambda: False)
+                        tf.summary.scalar("Avg step time", avg_step_time, step)
                         tf.summary.scalar("Noise variance", noise_sigma, step)
                         self.writer.flush()
 
@@ -75,29 +93,7 @@ class Logger(tf.Module):
                         tf.summary.scalar("Avg Step time", avg_step_time, step)
                         self.writer.flush()
 
-    def increment_episode(self, increment=1):
-        """
-        Increments counter in a thread safe manner.
-        """
-        with tf.device(self.device), self.name_scope:
-            print("retracing Logger increment")
 
-            def assign_add():
-                return self.episode_counter.assign_add(increment).value()
-
-            return self.episode_counter_cs.execute(assign_add)
-
-    def n_episode(self):
-        """
-        Get the counter value in a thread safe manner.
-        """
-        with tf.device(self.device), self.name_scope:
-            print("retracing Logger call")
-
-            def get_value():
-                return self.episode_counter.value()
-
-            return self.episode_counter_cs.execute(get_value)
 
 
 

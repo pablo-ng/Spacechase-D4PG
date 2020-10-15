@@ -22,7 +22,7 @@ class VideoRecorder:
             raise Exception("Frame size must be > 64px")
 
         self.video_writer = None
-        self.writer_path = 'recorded/' + log_dir
+        self.writer_path = log_dir
 
         if not isdir("recorded"):
             mkdir("recorded")
