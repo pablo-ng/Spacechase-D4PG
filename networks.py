@@ -23,6 +23,14 @@ def base_net(x):
     dropout = (lambda inp: tf.keras.layers.Dropout(rate=0.16)(inp)) if Params.WITH_DROPOUT else lambda inp: inp
 
     x = batch_norm(x)
+
+    if Params.ENV_IMAGE_INPUT:
+        # todo use layers.MaxPooling2D((2, 2)) ?
+        x = tf.keras.layers.Conv2D(32, (5, 5), strides=(3, 3), data_format="channels_last", activation='relu')(x)
+        x = tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), data_format="channels_last", activation='relu')(x)
+        x = tf.keras.layers.Conv2D(64, (3, 3), strides=(1, 1), data_format="channels_last", activation='relu')(x)
+        x = tf.keras.layers.Flatten()(x)
+
     for n_units in Params.BASE_NET_ARCHITECTURE:
         x = tf.keras.layers.Dense(n_units, activation='relu', kernel_regularizer=regularizer)(x)
         x = batch_norm(x)
@@ -128,8 +136,8 @@ class CriticNetwork(tf.Module):
         with tf.device(self.device), self.name_scope:
             inputs = tf.keras.Input(shape=Params.ENV_OBS_SPACE)
             action = tf.keras.Input(shape=Params.ENV_ACT_SPACE, name="action")
-            x = tf.keras.layers.Concatenate()([inputs, action])
-            x, _ = base_net(x)
+            x, _ = base_net(inputs)
+            x = tf.keras.layers.Concatenate()([x, action])
             output_logits = tf.keras.layers.Dense(Params.NUM_ATOMS, activation="linear",
                                                   kernel_initializer=tf.random_uniform_initializer(-0.003, 0.003),
                                                   bias_initializer=tf.random_uniform_initializer(-0.003, 0.003))(x)

@@ -28,12 +28,7 @@ class Actor(ActorNetwork):
             self.running = tf.Variable(True)
 
             # Init Env
-            if Params.ENV_NAME == "SC":
-                self.env = GameTF()
-            elif Params.ENV_NAME == "GYM":
-                self.env = GymTF()
-            else:
-                raise Exception(f"Environment with name {Params.ENV_NAME} not found.")
+            self.env = eval(Params.ENV_NAME)()
 
     @tf.function()
     def run(self):
@@ -150,7 +145,7 @@ class Actor(ActorNetwork):
             # Save next frame if recording
             frames = tf.cond(
                 tf.logical_and(self.record_episode, tf.equal(tf.math.floormod(n_step, Params.RECORD_STEP_FREQ), 0)),
-                lambda: frames.write(frames.size(), self.env.get_frame()),
+                lambda: frames.write(frames.size(), self.env.get_frame(as_image=True)),
                 lambda: frames
             )
 

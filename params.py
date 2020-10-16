@@ -9,7 +9,7 @@ class ParamsTest:
 
 class Params:
 
-    ENABLE_XLA = True  # optimizing compiler, see https://www.tensorflow.org/xla
+    ENABLE_XLA = False  # optimizing compiler, see https://www.tensorflow.org/xla
     # set XLA envvars: export XLA_FLAGS=--xla_gpu_cuda_data_dir=/usr/lib/cuda;
     # to enable auto-clustering on CPU: export TF_XLA_FLAGS=--tf_xla_cpu_global_jit
 
@@ -30,9 +30,17 @@ class Params:
     # (should be chosen based on the range of normalised reward values in the chosen env)
     # rule of thumb: V_max = discounted sum of the maximum instantaneous rewards for the maximum episode length
     # V_min = - V_max
-    ENV_NAME = "SC"  # GYM or SC
-    if ENV_NAME == "GYM":
-        ENV_OBS_SPACE = tf.TensorShape((3,))
+
+    ENV_NAME = "GameTF"  # GameTF or GymTF
+    ENV_IMAGE_INPUT = True
+
+    if ENV_NAME == "GymTF":
+
+        if ENV_IMAGE_INPUT:
+            raise NotImplementedError
+        else:
+            ENV_OBS_SPACE = tf.TensorShape((3,))
+
         ENV_ACT_SPACE = tf.TensorShape((1,))
         ENV_ACT_BOUND = tf.constant([2.])
 
@@ -40,9 +48,15 @@ class Params:
         ENV_V_MIN = tf.constant(-400.)
         ENV_REWARD_INF = tf.constant(999.)
 
-    elif ENV_NAME == "SC":
+    elif ENV_NAME == "GameTF":
+
         ENV_N_GOALS = tf.constant(4)
-        ENV_OBS_SPACE = tf.TensorShape(4 + 2*ENV_N_GOALS,)
+
+        if ENV_IMAGE_INPUT:
+            ENV_OBS_SPACE = tf.TensorShape((65, 65, 3))
+        else:
+            ENV_OBS_SPACE = tf.TensorShape(4 + 2*ENV_N_GOALS,)
+
         ENV_ACT_SPACE = tf.TensorShape(2,)
         ENV_ACT_BOUND = tf.constant([1.])
 
@@ -54,7 +68,7 @@ class Params:
         raise Exception(f"Environment with name {ENV_NAME} not found.")
 
     # Replay Buffer
-    BUFFER_TYPE = "ReverbPrioritized"  # Uniform, ReverbUniform, ReverbPrioritized todo try change
+    BUFFER_TYPE = "ReverbUniform"  # Uniform, ReverbUniform, ReverbPrioritized todo try change
     BUFFER_SIZE = tf.constant(1000000, dtype=tf.int32)  # must be power of 2 for PER
     BUFFER_PRIORITY_ALPHA = tf.constant(0.6)  # (0.0 = Uniform sampling, 1.0 = Greedy prioritisation)
     BUFFER_PRIORITY_BETA_START = tf.constant(0.4, dtype=tf.float64)  # (0: no bias correction, 1: full bias correction)
@@ -62,13 +76,13 @@ class Params:
     BUFFER_PRIORITY_EPSILON = tf.constant(0.00001)
 
     # Networks
-    MINIBATCH_SIZE = tf.constant(512, dtype=tf.int32)
+    MINIBATCH_SIZE = tf.constant(256, dtype=tf.int32)
     ACTOR_LEARNING_RATE = tf.constant(0.0001)
     CRITIC_LEARNING_RATE = tf.constant(0.001)
     GAMMA = tf.constant(0.996)  # Discount rate for future rewards
     TAU = tf.constant(0.001, dtype=DTYPE)  # Parameter for soft target network updates
     N_STEP_RETURNS = tf.constant(5)
-    BASE_NET_ARCHITECTURE = [1024]  # shallow net seems to work best, should be divisible by 16
+    BASE_NET_ARCHITECTURE = [512]  # shallow net seems to work best, should be divisible by 16
     NUM_ATOMS = 51  # Number of atoms in output layer of distributional critic
     WITH_BATCH_NORM = tf.constant(True)
     WITH_DROPOUT = tf.constant(False)
@@ -78,7 +92,7 @@ class Params:
     DT = tf.constant(0.02)
     NOISE_TYPE = "Gaussian"  # Gaussian or OrnsteinUhlenbeck
     NOISE_MU = tf.constant(0.)
-    NOISE_SIGMA = tf.constant(0.3)
+    NOISE_SIGMA = tf.constant(0.5)
     NOISE_SIGMA_MIN = tf.constant(5e-3)  # when to stop decreasing sigma
     NOISE_THETA = tf.constant(0.15)
     NOISE_DECAY = tf.constant(0.999253712)
@@ -87,13 +101,13 @@ class Params:
     # Video Recorder
     RECORD_VIDEO = tf.constant(True)
     RECORD_VIDEO_TYPE = "GIF"  # GIF or MP4
-    FRAME_SIZE = tf.constant([64., 64.])
+    FRAME_SIZE = tf.constant([65., 65.])
     RECORD_START_EP = tf.constant(500)  # start recording at episode n
     RECORD_FREQ = tf.constant(150)  # record episodes and save to video file every n epsidoes
     RECORD_STEP_FREQ = tf.constant(3)  # do record step every n steps (to skip steps in between)
 
-    LOG_TENSORBOARD = tf.constant(True)  # start with: $ tensorboard --logdir logs --reload_interval 5
-    LOG_CONSOLE = tf.constant(False)  # print logs to console
+    LOG_TENSORBOARD = tf.constant(False)  # start with: $ tensorboard --logdir logs --reload_interval 5
+    LOG_CONSOLE = tf.constant(True)  # print logs to console
     ACTOR_LOG_STEPS = tf.constant(25)  # log actor status every n episodes
     LEARNER_LOG_STEPS = tf.constant(200)  # log learner status every n learner steps
     TENSORFLOW_PROFILER = tf.constant(False)
@@ -114,6 +128,8 @@ class Params:
     """
 
     # Calculate some params
+    assert tf.reduce_all(tf.equal(tf.constant(ENV_OBS_SPACE[0:2], dtype=DTYPE), FRAME_SIZE[0:2])), \
+        f"ENV_OBS_SPACE ({ENV_OBS_SPACE}) must match FRAME_SIZE ({FRAME_SIZE}) in first two dims"
     BUFFER_PRIORITY_BETA_INCREMENT = tf.divide((BUFFER_PRIORITY_BETA_END - BUFFER_PRIORITY_BETA_START),
                                                tf.cast(MAX_STEPS_TRAIN, BUFFER_PRIORITY_BETA_START.dtype))
     BUFFER_FROM_REVERB = tf.constant(True) if BUFFER_TYPE in ("ReverbUniform", "ReverbPrioritized") else tf.constant(False)

@@ -17,6 +17,10 @@ from logger import Logger
 
 """
 TODO
+stack 4 frame together so we get e.g. 84x84x4 as NN input
+32 20 x 20 feature maps, 64 9 x 9 feature maps, and 64 7x7 feature maps.
+3,136 (64x7x7) units in this third Conv2D layer all connect to each of 512 units in the fully connected hidden layer
+
 - logger: see write_graph and write_images
 - analytical solution, train agent only for control / for approaching x/y coords
 - name all operations, then can use profiler: 

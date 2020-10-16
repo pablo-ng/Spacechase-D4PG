@@ -33,12 +33,7 @@ def test():
         video_recorder = None
 
     # Init Env
-    if Params.ENV_NAME == "SC":
-        env = GameTF()
-    elif Params.ENV_NAME == "GYM":
-        env = GymTF()
-    else:
-        raise Exception(f"Environment with name {Params.ENV_NAME} not found.")
+    env = eval(Params.ENV_NAME)()
 
     run(logger, env, model, video_recorder)
 
@@ -93,7 +88,7 @@ def do_step(env, model, n_step, terminal, state, ep_reward_sum, ep_reward_sum_di
     # Save next frame
     frames = tf.cond(
         tf.equal(tf.math.floormod(n_step, Params.RECORD_STEP_FREQ), 0),
-        lambda: frames.write(frames.size(), env.get_frame()),
+        lambda: frames.write(frames.size(), env.get_frame(as_image=True)),
         lambda: frames
     )
 

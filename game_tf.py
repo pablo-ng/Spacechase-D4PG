@@ -14,7 +14,17 @@ class GameTF(tf.Module):
             self.dtype = Params.DTYPE
             self.dt = Params.DT
 
-            self.frame_size = Params.FRAME_SIZE
+            self.obs_space = Params.ENV_OBS_SPACE
+            self.act_space = Params.ENV_ACT_SPACE
+            self.act_bound = Params.ENV_ACT_BOUND
+
+            self.frame_size = tf.cast(Params.FRAME_SIZE, tf.int64)
+            self.frame_size_reduced = tf.subtract(Params.FRAME_SIZE, 1.)
+            self.n_channels = tf.constant(Params.ENV_OBS_SPACE[-1])
+            self.frames_buffer_initial = tf.zeros(
+                (tf.cast(self.n_channels, tf.int64), self.frame_size[0], self.frame_size[1])
+            )
+            self.frames_buffer = tf.Variable(self.frames_buffer_initial)
 
             self.bes = tf.Variable([0., 0.])
             self.ges = tf.Variable([0., 0.])
@@ -29,10 +39,6 @@ class GameTF(tf.Module):
             self.n_steps_total = tf.Variable(0)
             self.terminal = tf.Variable(True)
             self.info = tf.Variable("")
-
-            self.obs_space = Params.ENV_OBS_SPACE
-            self.act_space = Params.ENV_ACT_SPACE
-            self.act_bound = Params.ENV_ACT_BOUND
 
             self.not_schnitt_kreis_bande = \
                 lambda kreis: tf.cond(
@@ -63,6 +69,8 @@ class GameTF(tf.Module):
             self.goal_pos.assign(tf.concat([tf.concat([y, x], axis=1), tf.concat([y, 1-x], axis=1)], axis=0))
 
             self.goals_leftover.assign(self.n_goals)
+
+            self.frames_buffer.assign(self.frames_buffer_initial)
 
             return self.get_obs()
 
@@ -127,32 +135,41 @@ class GameTF(tf.Module):
     def get_obs(self):
         print("retracing get_obs")
         with tf.device(self.device), self.name_scope:
-            obs = tf.concat([self.pos, self.ges, tf.reshape(self.goal_pos, (-1,))], axis=0)
-            return obs
+            if Params.ENV_IMAGE_INPUT:
+                indices = tf.expand_dims(tf.math.mod(self.n_steps_total, self.n_channels), axis=0)
+                values = tf.expand_dims(self.get_frame(as_image=False), axis=0)
+                self.frames_buffer.scatter_update(tf.IndexedSlices(values, indices))
+                return tf.transpose(self.frames_buffer.value(), perm=[1, 2, 0])
+            else:
+                return tf.concat([self.pos, self.ges, tf.reshape(self.goal_pos, (-1,))], axis=0)
 
-    def get_frame(self):
+    def get_frame(self, as_image):
         print("retracing get_frame")
 
         with tf.device(self.device), self.name_scope:
 
-            indices = tf.expand_dims(tf.cast(self.pos * self.frame_size, tf.int64), axis=0)
+            indices = tf.expand_dims(tf.cast(self.pos * self.frame_size_reduced, tf.int64), axis=0)
             values = tf.constant([0.2])
 
             goal_pos_valid_indices = tf.reduce_any(tf.greater_equal(self.goal_pos, 0), axis=1)
             goal_pos_filtered = self.goal_pos[goal_pos_valid_indices]
-            indices = tf.concat([indices, tf.cast(goal_pos_filtered * self.frame_size, tf.int64)], axis=0)
-            values = tf.concat([values, tf.repeat(.6, repeats=tf.reduce_sum(tf.cast(goal_pos_valid_indices, tf.int64)))], axis=0)
+            indices = tf.concat([indices, tf.cast(goal_pos_filtered * self.frame_size_reduced, tf.int64)], axis=0)
+            values = tf.concat(
+                [values, tf.repeat(.6, repeats=tf.reduce_sum(tf.cast(goal_pos_valid_indices, tf.int64)))],
+                axis=0,
+            )
 
-            frame = tf.SparseTensor(indices=indices, values=values, dense_shape=tf.cast(self.frame_size + 1, tf.int64))
+            frame = tf.SparseTensor(indices=indices, values=values, dense_shape=self.frame_size)
             frame = tf.sparse.to_dense(frame, validate_indices=False)
             frame = tf.expand_dims(frame, axis=0)
             frame = tf.expand_dims(frame, axis=3)
 
             filters = tf.ones((3, 3, 1, 1))
             frame = tf.nn.conv2d(frame, filters, strides=1, padding="SAME")
-
             frame = tf.squeeze(frame)
-            frame = tf.cast(frame * 255, tf.uint8)
+
+            if as_image:
+                frame = tf.cast(frame * 255, tf.uint8)
 
             return frame
 
