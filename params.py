@@ -106,8 +106,8 @@ class Params:
     RECORD_FREQ = tf.constant(150)  # record episodes and save to video file every n epsidoes
     RECORD_STEP_FREQ = tf.constant(3)  # do record step every n steps (to skip steps in between)
 
-    LOG_TENSORBOARD = tf.constant(False)  # start with: $ tensorboard --logdir logs --reload_interval 5
-    LOG_CONSOLE = tf.constant(True)  # print logs to console
+    LOG_TENSORBOARD = tf.constant(True)  # start with: $ tensorboard --logdir logs --reload_interval 5
+    LOG_CONSOLE = tf.constant(False)  # print logs to console
     ACTOR_LOG_STEPS = tf.constant(25)  # log actor status every n episodes
     LEARNER_LOG_STEPS = tf.constant(200)  # log learner status every n learner steps
     TENSORFLOW_PROFILER = tf.constant(False)

@@ -62,7 +62,8 @@ def train():
     # Construct logdir
     log_dir = f"{datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}" \
               f"_{Params.BUFFER_TYPE}_B{Params.MINIBATCH_SIZE}_{Params.N_STEP_RETURNS}N" \
-              f"_{Params.NOISE_TYPE}_Net{'-'.join([str(n_units) for n_units in Params.BASE_NET_ARCHITECTURE])}"
+              f"_{Params.NOISE_TYPE}_Net{'-'.join([str(n_units) for n_units in Params.BASE_NET_ARCHITECTURE])}" \
+              f"{'_imginput' if Params.ENV_IMAGE_INPUT else ''}"
 
     # Init Logger
     if Params.DO_LOGGING:
