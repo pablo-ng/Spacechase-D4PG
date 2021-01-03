@@ -17,6 +17,9 @@ from logger import Logger
 
 """
 TODO
+
+- see https://openai.com/blog/emergent-tool-use/
+
 stack 4 frame together so we get e.g. 84x84x4 as NN input
 32 20 x 20 feature maps, 64 9 x 9 feature maps, and 64 7x7 feature maps.
 3,136 (64x7x7) units in this third Conv2D layer all connect to each of 512 units in the fully connected hidden layer
@@ -32,6 +35,9 @@ stack 4 frame together so we get e.g. 84x84x4 as NN input
 - DeepMind MuJoCo Multi-Agent Soccer Environment
     https://github.com/deepmind/dm_control/blob/master/dm_control/locomotion/soccer/README.md
 - see acme code: https://github.com/deepmind/acme
+- Addressing Function Approximation Error in Actor-Critic Methods https://arxiv.org/abs/1802.09477
+- Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor https://arxiv.org/abs/1801.01290
+- DeepMind Control Suite https://arxiv.org/abs/1801.00690
 """
 
 
